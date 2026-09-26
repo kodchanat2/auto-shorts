@@ -4,3 +4,5 @@ output/
 .env
 __pycache__/
 .venv/
+music/
+storyboards/

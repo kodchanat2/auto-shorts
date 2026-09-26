@@ -48,9 +48,10 @@ TTS_TRIM_SILENCE = True     # strip edge-tts lead/tail silence (~0.17s + ~0.8s) 
 TTS_SILENCE_DB = -45.0      # samples quieter than this (dBFS) count as silence when trimming
 TTS_KEEP_LEAD_SEC = 0.02    # silence kept before speech after trimming
 TTS_KEEP_TAIL_SEC = 0.06    # silence kept after speech so final consonants are not clipped
-FOOTAGE_SPEED = 1.0         # stock clip playback speed (2.0 = 2x); clips need speed × cut length
-BGM_VOLUME = 0.16           # music gain before ducking
-BGM_DUCK_RATIO = 8          # sidechain ratio while voice plays; lower = music stays louder under voice
+FOOTAGE_SPEED = 2.0         # stock clip playback speed (2.0 = 2x); clips need speed × cut length
+BGM_VOLUME = 0.5            # music gain before ducking
+BGM_DUCK_RATIO = 1.2        # sidechain ratio while voice plays; lower = music stays louder under voice
+AUDIO_GAP_WARN_SEC = 0.05   # post-render check: audio packet gaps longer than this are reported
 
 DEFAULTS = {
     "voice": {
@@ -854,35 +855,24 @@ def pick_bgm(cfg: dict, rng: random.Random) -> Path | None:
 
 
 # ───────────────────────────── final mux ─────────────────────────────
-def final_mux(video: Path, voice: Path, captions: Path | None, bgm: Path | None,
-              bcfg: dict, rcfg: dict, total_f: int, out: Path) -> None:
-    fps = rcfg["fps"]
-    T = total_f / fps
-    cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(video), "-i", str(voice)]
-    idx = 2
-    cap_i = bgm_i = None
-    if captions:
-        cmd += ["-i", str(captions)]
-        cap_i, idx = idx, idx + 1
+def mix_audio(voice: Path, bgm: Path | None, bcfg: dict, T: float, out_wav: Path) -> None:
+    """Pass 1 (audio only): loudnorm voice + ducked BGM -> stereo 48 kHz WAV.
+    Kept out of the video graph: ffmpeg 9 drops audio frames (~3 s at loudnorm)
+    when these filters share a filter_complex with the caption overlay."""
+    cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(voice)]
     if bgm:
         cmd += ["-stream_loop", "-1", "-i", str(bgm)]
-        bgm_i = idx
-
-    fc = []
-    if cap_i is not None:
-        fc.append(f"[0:v][{cap_i}:v]overlay=0:0:format=auto,format=yuv420p[v]")
-    else:
-        fc.append("[0:v]format=yuv420p[v]")
-    fc.append("[1:a]loudnorm=I=-15:TP=-1.5:LRA=11,aresample=48000,"
-              "aformat=sample_fmts=fltp:channel_layouts=stereo[vox]")
-    if bgm_i is not None:
+    fc = ["[0:a]loudnorm=I=-15:TP=-1.5:LRA=11,aresample=48000,"
+          "aformat=sample_fmts=fltp:channel_layouts=stereo[vox]"]
+    if bgm:
         fi, fo = bcfg["fade_in_sec"], min(bcfg["fade_out_sec"], T / 2)
-        fc.append(f"[{bgm_i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+        fc.append(f"[1:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
                   f"atrim=0:{T:.3f},asetpts=PTS-STARTPTS,volume={bcfg['volume']},"
                   f"afade=t=in:st=0:d={fi},afade=t=out:st={max(0, T - fo):.3f}:d={fo}[bg0]")
         if bcfg.get("duck", True):
             fc.append("[vox]asplit=2[vox1][vsc]")
-            fc.append(f"[bg0][vsc]sidechaincompress=threshold=0.02:ratio={bcfg['duck_ratio']}:attack=20:release=450:makeup=1[bg]")
+            fc.append(f"[bg0][vsc]sidechaincompress=threshold=0.02:ratio={bcfg['duck_ratio']}"
+                      ":attack=20:release=450:makeup=1[bg]")
             fc.append("[vox1][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
                       "alimiter=limit=0.95[a]")
         else:
@@ -890,13 +880,49 @@ def final_mux(video: Path, voice: Path, captions: Path | None, bgm: Path | None,
                       "alimiter=limit=0.95[a]")
     else:
         fc.append("[vox]alimiter=limit=0.95[a]")
+    cmd += ["-filter_complex", ";".join(fc), "-map", "[a]", "-t", f"{T:.3f}",
+            "-c:a", "pcm_s16le", "-ar", "48000", str(out_wav)]
+    run(cmd, "audio mix")
 
-    cmd += ["-filter_complex", ";".join(fc), "-map", "[v]", "-map", "[a]",
+
+def final_mux(video: Path, audio: Path, captions: Path | None,
+              rcfg: dict, total_f: int, out: Path) -> None:
+    """Pass 2: caption overlay on video; pre-mixed audio passes through (AAC encode only)."""
+    fps = rcfg["fps"]
+    T = total_f / fps
+    cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(video), "-i", str(audio)]
+    if captions:
+        cmd += ["-i", str(captions)]
+        vf = "[0:v][2:v]overlay=0:0:format=auto,format=yuv420p[v]"
+    else:
+        vf = "[0:v]format=yuv420p[v]"
+    cmd += ["-filter_complex", vf, "-map", "[v]", "-map", "1:a",
             "-c:v", "libx264", "-preset", rcfg["preset"], "-crf", str(rcfg["crf"]),
             "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(fps),
             "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
             "-t", f"{T:.3f}", "-movflags", "+faststart", str(out)]
     run(cmd, "final mux")
+
+
+def check_audio_continuity(path: Path) -> None:
+    """Warn if the output audio track has holes (players then play later audio early)."""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "packet=pts_time",
+         "-of", "csv=p=0", str(path)], capture_output=True, text=True)
+    pts = []
+    for row in r.stdout.splitlines():
+        field = row.split(",")[0].strip()
+        try:
+            pts.append(float(field))
+        except ValueError:
+            continue  # N/A or empty rows
+    pts.sort()
+    if not pts:
+        warn("final video has no audio packets")
+        return
+    for a, b in zip(pts, pts[1:]):
+        if b - a > AUDIO_GAP_WARN_SEC:
+            warn(f"audio gap {a:.2f}s → {b:.2f}s ({b - a:.2f}s missing) — voice will drift after {a:.1f}s")
 
 
 # ───────────────────────────── main pipeline ─────────────────────────────
@@ -1102,7 +1128,10 @@ def main() -> None:
     bgm = pick_bgm(b, rng) if b["enabled"] else None
     if bgm:
         log(f"  BGM: {bgm.name} (vol {b['volume']}, ducking {'on' if b['duck'] else 'off'})")
-    final_mux(video_only, voice_wav, cap_track, bgm, b, r, total_f, out_path)
+    mix_wav = work / "audio" / "mix.wav"
+    mix_audio(voice_wav, bgm, b, total_f / fps, mix_wav)
+    final_mux(video_only, mix_wav, cap_track, r, total_f, out_path)
+    check_audio_continuity(out_path)
 
     # ── reports ──
     for sc_json, sc in zip(timeline["scenes"], scenes):

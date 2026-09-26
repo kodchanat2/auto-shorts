@@ -84,10 +84,29 @@
       "properties": {
         "enabled": { "type": "boolean", "default": true },
         "folder": { "type": "string", "default": "music" },
-        "file": { "type": ["string", "null"], "default": null, "description": "Specific file inside folder. null = pick by seed." },
-        "volume": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.16 },
-        "duck_ratio": { "type": "number", "minimum": 1, "maximum": 20, "default": 8, "description": "Sidechain compression ratio while the voice plays. Lower = music stays louder under speech." },
-        "duck": { "type": "boolean", "default": true, "description": "Sidechain-duck the music whenever the voice speaks." },
+        "file": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Specific file inside folder. null = pick by seed."
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.5
+        },
+        "duck_ratio": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 1.2,
+          "description": "Sidechain compression ratio while the voice plays. Lower = music stays louder under speech."
+        },
+        "duck": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sidechain-duck the music whenever the voice speaks."
+        },
         "fade_in_sec": { "type": "number", "minimum": 0, "default": 0.5 },
         "fade_out_sec": { "type": "number", "minimum": 0, "default": 1.5 }
       }
