@@ -172,6 +172,7 @@
         },
         "visual_intent": { "type": "string", "description": "Why this shot exists / what it must show." },
         "pexels_video_id": { "type": ["integer", "null"], "default": null, "description": "Pin an exact Pexels video (after human review of timeline.json)." },
+        "exclude_video_ids": { "type": "array", "items": { "type": "integer" }, "uniqueItems": true, "description": "Pexels ids never to use for this cut (the GUI re-roll button appends here)." },
         "notes": { "type": "string" }
       }
     }

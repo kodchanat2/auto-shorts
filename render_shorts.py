@@ -95,6 +95,18 @@ def log(msg: str) -> None:
     print(msg, flush=True)
 
 
+PROGRESS = False            # set by --progress
+PROGRESS_PREFIX = "@@progress "
+PROGRESS_STAGES = 5
+
+
+def progress(stage: int, label: str, done: int = 0, total: int = 0) -> None:
+    """Machine-readable progress line for the GUI (only with --progress)."""
+    if PROGRESS:
+        event = {"stage": stage, "stages": PROGRESS_STAGES, "label": label, "done": done, "total": total}
+        print(PROGRESS_PREFIX + json.dumps(event, ensure_ascii=False), flush=True)
+
+
 def warn(msg: str) -> None:
     WARNINGS.append(msg)
     print(f"  ⚠️  {msg}", flush=True)
@@ -189,6 +201,7 @@ class CutPlan:
     shot_type: str
     intent: str
     pinned_id: int | None
+    excluded: tuple = ()      # Pexels ids never to pick for this cut (GUI "re-roll")
     frames: int = 0
     start_f: int = 0
     # filled by footage stage
@@ -531,6 +544,7 @@ def allocate_cuts(scene: ScenePlan, fps: int, min_s: float, max_s: float) -> lis
             query=c["pexels_query"], fallbacks=c.get("fallback_queries", []),
             shot_type=c["shot_type"], intent=c.get("visual_intent", ""),
             pinned_id=c.get("pexels_video_id") if var == 0 else None,
+            excluded=tuple(c.get("exclude_video_ids", [])),
             frames=frames, start_f=scene.start_f + prev))
         prev += frames
     return cuts
@@ -626,7 +640,7 @@ class Pexels:
         for orientation, max_scale in (("portrait", 1.0), ("portrait", 1.5), (None, 1.5)):
             for q in queries:
                 for v in self.search(q, orientation):
-                    if v["id"] in self.used:
+                    if v["id"] in self.used or v["id"] in cut.excluded:
                         continue
                     if orientation is None and v.get("width", 0) > v.get("height", 1):
                         # landscape last resort: only if tall enough to crop 9:16 decently
@@ -646,7 +660,8 @@ class Pexels:
             return
         # absolute last resort: allow reuse of the primary query's first result
         for q in queries:
-            vids = self.search(q, "portrait") or self.search(q, None)
+            vids = [v for v in (self.search(q, "portrait") or self.search(q, None))
+                    if v["id"] not in cut.excluded]
             if vids:
                 warn(f"{cut.cut_id}: all results already used → reusing a clip for '{q}'")
                 self._accept(cut, vids[0], q, W, H)
@@ -963,7 +978,10 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--refresh-footage", action="store_true", help="ignore cached Pexels searches")
     ap.add_argument("--keep-temp", action="store_true")
+    ap.add_argument("--progress", action="store_true", help=f"emit '{PROGRESS_PREFIX.strip()} {{json}}' lines")
     args = ap.parse_args()
+    global PROGRESS
+    PROGRESS = args.progress
 
     try:
         from dotenv import load_dotenv
@@ -1028,6 +1046,7 @@ def main() -> None:
 
     # ── 1. TTS ──
     log("\n🎙️  1/5 Voiceover (edge-tts)")
+    progress(1, "Voiceover")
     all_lines = [ln for sc in scenes for ln in sc.lines]
     synthesize_lines(all_lines, v, cache / "tts")
 
@@ -1070,6 +1089,7 @@ def main() -> None:
     captions: list[Caption] = []
     if s["enabled"]:
         log("\n💬 2/5 Caption timing (pythainlp)")
+        progress(2, "Caption timing")
         tok = tokenizer(list(v["pronunciations"].keys()) + s["emphasis_words"])
         for sc in scenes:
             for ln in sc.lines:
@@ -1091,6 +1111,7 @@ def main() -> None:
 
     # ── 3. Cut allocation ──
     log("\n✂️  3/5 Cut plan")
+    progress(3, "Cut plan")
     for sc in scenes:
         sc.cuts = allocate_cuts(sc, fps, r["min_cut_sec"], r["max_cut_sec"])
         log(f"  {sc.scene_id}: " + " | ".join(
@@ -1127,11 +1148,13 @@ def main() -> None:
     if not key:
         die("PEXELS_API_KEY is not set. Put it in .env or export it.")
     log("\n🎞️  4/5 Pexels footage")
+    progress(4, "Pexels footage", 0, 2 * len(all_cuts))
     px = Pexels(key, cache / "pexels", args.refresh_footage)
     for c in all_cuts:
         px.choose(c, c.frames / fps * r["footage_speed"], W, H)
     for i, c in enumerate(all_cuts, 1):
         px.download(c)
+        progress(4, "Downloading clips", i, 2 * len(all_cuts))
         log(f"  [{i:>2}/{len(all_cuts)}] {c.cut_id}{'′' * c.variant:<2} ← pexels #{c.video['id']} "
             f"({c.video.get('duration', '?')}s) via '{c.query_used}'")
 
@@ -1141,6 +1164,7 @@ def main() -> None:
         for i, c in enumerate(all_cuts):
             seg = work / "segments" / f"{i:03d}_{c.cut_id}_{c.variant}.mp4"
             render_segment(c, seg, W, H, fps, rng, r["footage_speed"])
+            progress(4, "Normalizing clips", len(all_cuts) + i + 1, 2 * len(all_cuts))
             f.write(f"file '{seg.resolve()}'\n")
     video_only = work / "video_only.mp4"
     run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(seg_list),
@@ -1148,6 +1172,7 @@ def main() -> None:
 
     # ── 5. Compose ──
     log("\n🎚️  5/5 Captions + BGM + final encode")
+    progress(5, "Captions", 0, 3)
     cap_track = None
     if s["enabled"] and captions:
         rend = CaptionRenderer(s, W, H, work / "captions")
@@ -1161,8 +1186,11 @@ def main() -> None:
         log(f"  BGM: {bgm.name} from {b['start_sec']:.1f}s "
             f"(vol {b['volume']}, ducking {'on' if b['duck'] else 'off'})")
     mix_wav = work / "audio" / "mix.wav"
+    progress(5, "Mixing audio", 1, 3)
     mix_audio(voice_wav, bgm, b, total_f / fps, mix_wav)
+    progress(5, "Final encode", 2, 3)
     final_mux(video_only, mix_wav, cap_track, r, total_f, out_path)
+    progress(5, "Done", 3, 3)
     check_audio_continuity(out_path)
 
     # ── reports ──

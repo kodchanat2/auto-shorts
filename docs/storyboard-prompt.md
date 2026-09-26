@@ -69,7 +69,7 @@
   scene แรกเป็น HOOK, scene สุดท้ายเป็น RESOLUTION, BODY มีซ้ำได้ 1–2 scene
 - narration_lines มีอย่างน้อย 1 บรรทัด ห้ามเป็นข้อความว่าง
 - cut แต่ละอันต้องมี cut_id, duration_hint_sec, shot_type, pexels_query
-  (fallback_queries, visual_intent, notes ใส่หรือไม่ใส่ก็ได้; ห้ามใส่ pexels_video_id)
+  (fallback_queries, visual_intent, notes ใส่หรือไม่ใส่ก็ได้; ห้ามใส่ pexels_video_id และ exclude_video_ids)
 - duration_hint_sec เป็นตัวเลข 1.5–3.0 (เป็นแค่น้ำหนัก ระบบจะสเกลให้ตรงกับเสียงจริงเอง)
 - shot_type เป็นหนึ่งใน: extreme_close_up, close_up, medium, wide, aerial, overhead, pov,
   over_the_shoulder, tracking, slow_motion, timelapse
