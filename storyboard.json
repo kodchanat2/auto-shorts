@@ -7,7 +7,7 @@
     "language": "th-TH"
   },
   "voice": {
-    "voice_id": "th-TH-PremwadeeNeural",
+    "voice_id": "th-TH-NiwatNeural",
     "rate": "+10%",
     "pitch": "+0Hz",
     "line_gap_sec": 0.12,
