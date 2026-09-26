@@ -63,7 +63,7 @@ Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (�
 
 | ค่า | แนะนำ | หมายเหตุ |
 |---|---|---|
-| `voice_id` | `th-TH-PremwadeeNeural` (หญิง), `th-TH-NiwatNeural` (ชาย) | ดูรายชื่อทั้งหมดด้วย `edge-tts --list-voices \| grep th-TH` |
+| `voice_id` | `th-TH-NiwatNeural` (ชาย), `th-TH-PremwadeeNeural` (หญิง — ณ ก.ย. 2026 ฝั่ง Microsoft ไม่ส่งเสียงกลับ) | ดูรายชื่อทั้งหมดด้วย `edge-tts --list-voices \| grep th-TH` |
 | `rate` | `+8%` ถึง `+15%` | Shorts ควรเร็วกว่าปกติเล็กน้อย ถ้าเกิน +20% จะเริ่มฟังไม่เป็นธรรมชาติ |
 | `pitch` | `+0Hz` ถึง `+5Hz` | เสียงผู้หญิงที่ `+3Hz` จะสดใสขึ้น |
 | `line_gap_sec` | `0.08`–`0.15` | เว้นช่วงระหว่างประโยค ยิ่งน้อยยิ่งกระชับ |
@@ -85,7 +85,7 @@ Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (�
 สร้าง storyboard.json ตาม schema ที่แนบ (schema_version "1.0") โดย:
 - โครงสร้าง H-C-B-R: HOOK (≤4 วิ, ประโยคแรกต้องหยุดนิ้ว) → CONFLICT → BODY 1–2 scene → RESOLUTION + CTA
 - narration_lines: ภาษาไทยพูดธรรมชาติ บรรทัดละ 1 ประโยค เว้นวรรคตรงจุดหายใจ
-  รวมทั้งคลิปประมาณ 13 ตัวอักษร/วินาที (≈ 550–650 ตัวอักษรสำหรับ 45 วิ)
+  รวมทั้งคลิปประมาณ 10 ตัวอักษร/วินาทีที่ rate +10% (≈ 380–430 ตัวอักษรสำหรับ 45 วิ)
 - cuts: 1 คัตต่อเสียงพูดประมาณ 2–2.5 วินาที, duration_hint_sec 1.5–3.0
 - pexels_query: ภาษาอังกฤษ รูปธรรม "subject + action/object (+ setting)" 3–7 คำ
   ห้ามคำนามธรรม (success, motivation, idea) ห้าม AI/cartoon/3D/illustration
@@ -98,6 +98,7 @@ Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (�
 ## Troubleshooting
 
 - **`edge-tts failed` / 403:** ให้รัน `pip install -U edge-tts` ก่อน เพราะ Microsoft เปลี่ยน endpoint เป็นระยะ และตัวนี้ไม่ใช่ API ทางการ ถ้าใช้ไม่ได้ในอนาคต ให้แทนที่ฟังก์ชัน `_tts_one` ด้วย engine อื่นที่ส่งไฟล์ mp3 ออกมาเหมือนกัน
+- **`No audio was received`:** มักเป็นที่ voice นั้นๆ ฝั่ง Microsoft ไม่ใช่โค้ด ทดสอบด้วย `edge-tts --voice <voice_id> --text "ทดสอบ" --write-media test.mp3` ถ้า voice อื่นใช้ได้ให้เปลี่ยน `voice_id` ชั่วคราว (ดู [edge-tts#473](https://github.com/rany2/edge-tts/issues/473))
 - **สระหรือวรรณยุกต์ในซับซ้อนทับกัน:** Pillow ไม่มี RAQM ให้รัน `brew install libraqm` แล้วติดตั้ง Pillow ใหม่
 - **`Pexels rate limit`:** โควตาฟรีคือ 200 requests/ชม. ระบบรอให้เองอัตโนมัติ และ cache ช่วยลดการเรียกซ้ำได้มาก
 - **คลิปดูแตก (upscaled warning):** ให้ปักคลิปใหม่ด้วย `pexels_video_id` หรือเปลี่ยนคีย์เวิร์ด

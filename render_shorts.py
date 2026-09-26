@@ -40,7 +40,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 AUDIO_SR = 48000
 ROLE_ORDER = {"HOOK": 0, "CONFLICT": 1, "BODY": 2, "RESOLUTION": 3}
 THAI_RE = re.compile(r"[\u0E00-\u0E7F]")
-EST_CHARS_PER_SEC = 13.0  # rough Thai TTS speed at +0% (visible chars only)
+EST_CHARS_PER_SEC = 9.0  # rough Thai TTS speed at +0% (visible chars only; measured ~8.8 on th-TH-NiwatNeural)
 
 DEFAULTS = {
     "voice": {
