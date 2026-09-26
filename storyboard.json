@@ -10,8 +10,8 @@
     "voice_id": "th-TH-NiwatNeural",
     "rate": "+10%",
     "pitch": "+0Hz",
-    "line_gap_sec": 0.12,
-    "scene_gap_sec": 0.25,
+    "line_gap_sec": 0.05,
+    "scene_gap_sec": 0.12,
     "pronunciations": {
       "80%": "แปดสิบเปอร์เซ็นต์"
     }
@@ -22,7 +22,8 @@
     "fps": 30,
     "min_cut_sec": 1.5,
     "max_cut_sec": 3.0,
-    "seed": 42
+    "seed": 42,
+    "footage_speed": 2.0
   },
   "subtitles": {
     "enabled": true,
@@ -41,8 +42,9 @@
     "enabled": true,
     "folder": "music",
     "file": null,
-    "volume": 0.16,
-    "duck": true
+    "volume": 0.45,
+    "duck": true,
+    "duck_ratio": 4
   },
   "scenes": [
     {

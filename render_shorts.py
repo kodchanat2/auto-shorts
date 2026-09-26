@@ -31,6 +31,7 @@ import sys
 import time
 import unicodedata
 import wave
+from array import array
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -40,18 +41,28 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 AUDIO_SR = 48000
 ROLE_ORDER = {"HOOK": 0, "CONFLICT": 1, "BODY": 2, "RESOLUTION": 3}
 THAI_RE = re.compile(r"[\u0E00-\u0E7F]")
-EST_CHARS_PER_SEC = 9.0  # rough Thai TTS speed at +0% (visible chars only; measured ~8.8 on th-TH-NiwatNeural)
+EST_CHARS_PER_SEC = 12.0  # rough Thai TTS speed at +0% after silence trim (visible chars; measured ~12.4 on th-TH-NiwatNeural)
+
+# ── pacing / mix tunables (defaults; storyboard values override where exposed) ──
+TTS_TRIM_SILENCE = True     # strip edge-tts lead/tail silence (~0.17s + ~0.8s) from every line
+TTS_SILENCE_DB = -45.0      # samples quieter than this (dBFS) count as silence when trimming
+TTS_KEEP_LEAD_SEC = 0.02    # silence kept before speech after trimming
+TTS_KEEP_TAIL_SEC = 0.06    # silence kept after speech so final consonants are not clipped
+FOOTAGE_SPEED = 1.0         # stock clip playback speed (2.0 = 2x); clips need speed × cut length
+BGM_VOLUME = 0.16           # music gain before ducking
+BGM_DUCK_RATIO = 8          # sidechain ratio while voice plays; lower = music stays louder under voice
 
 DEFAULTS = {
     "voice": {
         "engine": "edge-tts", "voice_id": "th-TH-PremwadeeNeural",
         "rate": "+10%", "pitch": "+0Hz", "volume": "+0%",
         "line_gap_sec": 0.12, "scene_gap_sec": 0.25, "pronunciations": {},
+        "trim_silence": TTS_TRIM_SILENCE,
     },
     "render": {
         "width": 1080, "height": 1920, "fps": 30,
         "min_cut_sec": 1.5, "max_cut_sec": 3.0,
-        "crf": 18, "preset": "medium", "seed": 42,
+        "crf": 18, "preset": "medium", "seed": 42, "footage_speed": FOOTAGE_SPEED,
     },
     "subtitles": {
         "enabled": True, "font_path": None, "font_index": 0, "font_size": 92,
@@ -61,8 +72,8 @@ DEFAULTS = {
         "pop_animation": True, "emphasis_words": [],
     },
     "bgm": {
-        "enabled": True, "folder": "music", "file": None, "volume": 0.16,
-        "duck": True, "fade_in_sec": 0.5, "fade_out_sec": 1.5,
+        "enabled": True, "folder": "music", "file": None, "volume": BGM_VOLUME,
+        "duck": True, "duck_ratio": BGM_DUCK_RATIO, "fade_in_sec": 0.5, "fade_out_sec": 1.5,
     },
 }
 
@@ -424,6 +435,22 @@ def decode_pcm(mp3: Path, out_wav: Path) -> bytes:
         return w.readframes(w.getnframes())
 
 
+def trim_silence(pcm: bytes, words: list) -> tuple[bytes, list]:
+    """Strip edge-tts lead/tail silence from s16 mono PCM.
+    Returns new PCM and word timings shifted by the trimmed lead."""
+    samples = array("h", pcm)
+    thr = int(32768 * 10 ** (TTS_SILENCE_DB / 20))
+    first = next((i for i, x in enumerate(samples) if abs(x) > thr), None)
+    if first is None:
+        return pcm, words
+    last = next(i for i in range(len(samples) - 1, -1, -1) if abs(samples[i]) > thr)
+    start = max(0, first - int(TTS_KEEP_LEAD_SEC * AUDIO_SR))
+    end = min(len(samples), last + 1 + int(TTS_KEEP_TAIL_SEC * AUDIO_SR))
+    shift = start / AUDIO_SR
+    shifted = [{**w, "start": max(0.0, w["start"] - shift)} for w in words]
+    return samples[start:end].tobytes(), shifted
+
+
 def write_wav(path: Path, pcm: bytes) -> None:
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
@@ -647,11 +674,12 @@ class Pexels:
 
 
 # ───────────────────────────── video segments ─────────────────────────────
-def render_segment(cut: CutPlan, out: Path, W: int, H: int, fps: int, rng: random.Random) -> None:
+def render_segment(cut: CutPlan, out: Path, W: int, H: int, fps: int, rng: random.Random,
+                   speed: float = 1.0) -> None:
     src = Path(cut.local)
-    dur = cut.frames / fps
+    dur = cut.frames / fps * speed  # source seconds consumed by this cut
     src_dur = ffprobe_duration(src)
-    vf = (f"scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,"
+    vf = (f"setpts=PTS/{speed},scale={W}:{H}:force_original_aspect_ratio=increase:flags=lanczos,"
           f"crop={W}:{H},setsar=1,fps={fps},format=yuv420p")
     common = ["-an", "-vf", vf, "-frames:v", str(cut.frames), "-c:v", "libx264",
               "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(out)]
@@ -854,7 +882,7 @@ def final_mux(video: Path, voice: Path, captions: Path | None, bgm: Path | None,
                   f"afade=t=in:st=0:d={fi},afade=t=out:st={max(0, T - fo):.3f}:d={fo}[bg0]")
         if bcfg.get("duck", True):
             fc.append("[vox]asplit=2[vox1][vsc]")
-            fc.append("[bg0][vsc]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=450:makeup=1[bg]")
+            fc.append(f"[bg0][vsc]sidechaincompress=threshold=0.02:ratio={bcfg['duck_ratio']}:attack=20:release=450:makeup=1[bg]")
             fc.append("[vox1][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
                       "alimiter=limit=0.95[a]")
         else:
@@ -962,6 +990,8 @@ def main() -> None:
                 pcm += silence(v["line_gap_sec"])
             ln.start_f = frame_cursor + round(len(pcm) / 2 / spf)
             chunk = decode_pcm(ln.mp3, work / "audio" / f"{sc.scene_id}_{i}.wav")  # type: ignore[attr-defined]
+            if v["trim_silence"]:
+                chunk, ln.words = trim_silence(chunk, ln.words)
             ln.dur_s = len(chunk) / 2 / AUDIO_SR
             pcm += chunk
         pcm += silence(v["scene_gap_sec"])
@@ -1046,7 +1076,7 @@ def main() -> None:
     log("\n🎞️  4/5 Pexels footage")
     px = Pexels(key, cache / "pexels", args.refresh_footage)
     for c in all_cuts:
-        px.choose(c, c.frames / fps, W, H)
+        px.choose(c, c.frames / fps * r["footage_speed"], W, H)
     for i, c in enumerate(all_cuts, 1):
         px.download(c)
         log(f"  [{i:>2}/{len(all_cuts)}] {c.cut_id}{'′' * c.variant:<2} ← pexels #{c.video['id']} "
@@ -1057,7 +1087,7 @@ def main() -> None:
     with open(seg_list, "w", encoding="utf-8") as f:
         for i, c in enumerate(all_cuts):
             seg = work / "segments" / f"{i:03d}_{c.cut_id}_{c.variant}.mp4"
-            render_segment(c, seg, W, H, fps, rng)
+            render_segment(c, seg, W, H, fps, rng, r["footage_speed"])
             f.write(f"file '{seg.resolve()}'\n")
     video_only = work / "video_only.mp4"
     run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(seg_list),

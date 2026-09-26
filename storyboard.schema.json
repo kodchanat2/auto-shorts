@@ -33,6 +33,7 @@
         "volume": { "type": "string", "pattern": "^[+-]\\d{1,3}%$", "default": "+0%" },
         "line_gap_sec": { "type": "number", "minimum": 0, "maximum": 1.5, "default": 0.12, "description": "Silence between narration lines inside a scene." },
         "scene_gap_sec": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.25, "description": "Silence appended at the end of each scene." },
+        "trim_silence": { "type": "boolean", "default": true, "description": "Strip edge-tts lead/tail silence from each line before adding line/scene gaps." },
         "pronunciations": {
           "type": "object",
           "additionalProperties": { "type": "string" },
@@ -52,7 +53,8 @@
         "max_cut_sec": { "type": "number", "maximum": 6, "default": 3.0 },
         "crf": { "type": "integer", "minimum": 14, "maximum": 30, "default": 18 },
         "preset": { "enum": ["ultrafast", "veryfast", "fast", "medium", "slow"], "default": "medium" },
-        "seed": { "type": "integer", "default": 42, "description": "Controls clip start offsets & BGM pick. Same seed + cache => same video." }
+        "seed": { "type": "integer", "default": 42, "description": "Controls clip start offsets & BGM pick. Same seed + cache => same video." },
+        "footage_speed": { "type": "number", "minimum": 0.25, "maximum": 4, "default": 1.0, "description": "Stock clip playback speed. 2.0 = 2x; each cut then needs a source clip twice as long." }
       }
     },
 
@@ -84,6 +86,7 @@
         "folder": { "type": "string", "default": "music" },
         "file": { "type": ["string", "null"], "default": null, "description": "Specific file inside folder. null = pick by seed." },
         "volume": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.16 },
+        "duck_ratio": { "type": "number", "minimum": 1, "maximum": 20, "default": 8, "description": "Sidechain compression ratio while the voice plays. Lower = music stays louder under speech." },
         "duck": { "type": "boolean", "default": true, "description": "Sidechain-duck the music whenever the voice speaks." },
         "fade_in_sec": { "type": "number", "minimum": 0, "default": 0.5 },
         "fade_out_sec": { "type": "number", "minimum": 0, "default": 1.5 }
