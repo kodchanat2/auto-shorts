@@ -59,6 +59,7 @@ TTS_KEEP_TAIL_SEC = 0.06    # silence kept after speech so final consonants are 
 FOOTAGE_SPEED = 2.0         # stock clip playback speed (2.0 = 2x); clips need speed × cut length
 BGM_VOLUME = 0.5            # music gain before ducking
 BGM_DUCK_RATIO = 1.2        # sidechain ratio while voice plays; lower = music stays louder under voice
+BGM_START_SEC = 0.0         # where in the music file playback starts (skip unsuitable intros)
 AUDIO_GAP_WARN_SEC = 0.05   # post-render check: audio packet gaps longer than this are reported
 
 DEFAULTS = {
@@ -82,7 +83,7 @@ DEFAULTS = {
     },
     "bgm": {
         "enabled": True, "folder": "music", "file": None, "volume": BGM_VOLUME,
-        "duck": True, "duck_ratio": BGM_DUCK_RATIO, "fade_in_sec": 0.5, "fade_out_sec": 1.5,
+        "duck": True, "duck_ratio": BGM_DUCK_RATIO, "start_sec": BGM_START_SEC, "fade_in_sec": 0.5, "fade_out_sec": 1.5,
     },
 }
 
@@ -869,7 +870,8 @@ def mix_audio(voice: Path, bgm: Path | None, bcfg: dict, T: float, out_wav: Path
     when these filters share a filter_complex with the caption overlay."""
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(voice)]
     if bgm:
-        cmd += ["-stream_loop", "-1", "-i", str(bgm)]
+        # -ss applies to the first pass only; if the music loops it restarts from 0
+        cmd += ["-stream_loop", "-1", "-ss", f"{bcfg['start_sec']:.3f}", "-i", str(bgm)]
     fc = ["[0:a]loudnorm=I=-15:TP=-1.5:LRA=11,aresample=48000,"
           "aformat=sample_fmts=fltp:channel_layouts=stereo[vox]"]
     if bgm:
@@ -1152,7 +1154,12 @@ def main() -> None:
         cap_track = build_caption_track(captions, total_f, fps, rend, work)
     bgm = pick_bgm(b, rng) if b["enabled"] else None
     if bgm:
-        log(f"  BGM: {bgm.name} (vol {b['volume']}, ducking {'on' if b['duck'] else 'off'})")
+        bgm_len = ffprobe_duration(bgm)
+        if b["start_sec"] >= bgm_len > 0:
+            warn(f"bgm.start_sec {b['start_sec']}s is past the end of {bgm.name} ({bgm_len:.1f}s) → starting at 0s")
+            b["start_sec"] = 0.0
+        log(f"  BGM: {bgm.name} from {b['start_sec']:.1f}s "
+            f"(vol {b['volume']}, ducking {'on' if b['duck'] else 'off'})")
     mix_wav = work / "audio" / "mix.wav"
     mix_audio(voice_wav, bgm, b, total_f / fps, mix_wav)
     final_mux(video_only, mix_wav, cap_track, r, total_f, out_path)
@@ -1165,6 +1172,7 @@ def main() -> None:
                        "author": (c.video.get("user") or {}).get("name"),
                        "query_used": c.query_used, "source_start_sec": c.src_start})
     timeline["bgm"] = bgm.name if bgm else None
+    timeline["bgm_start_sec"] = b["start_sec"] if bgm else None
     timeline["warnings"] = WARNINGS
     tl_path.write_text(json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
     credits = out_path.parent / "credits.txt"

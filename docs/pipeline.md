@@ -52,7 +52,7 @@ flowchart TD
 | 2. Caption timing | ข้อความ + word timing | วลีซับพร้อมเวลา | `subtitles.max_chars`, `min_chars`, `emphasis_words` |
 | 3. Cut plan | `cuts[].duration_hint_sec` + ความยาวเสียงจริง | ความยาวจริงของแต่ละคัต | `render.min_cut_sec`, `max_cut_sec` |
 | 4. Footage | `pexels_query`, `fallback_queries`, `pexels_video_id` | คลิป 1080x1920 ต่อคัต | `render.footage_speed`, `--refresh-footage`, `--seed` |
-| 5. Compose | วิดีโอ + เสียง + ซับ + เพลง | `final_shorts.mp4` | `bgm.volume`, `bgm.duck_ratio`, `--no-subs`, `--no-bgm` |
+| 5. Compose | วิดีโอ + เสียง + ซับ + เพลง | `final.mp4` | `bgm.volume`, `bgm.duck_ratio`, `bgm.start_sec`, `bgm.file`, `--no-subs`, `--no-bgm` |
 
 ค่า default ของตัวปรับหลักอยู่เป็น constant ที่หัว `render_shorts.py` (`TTS_*`, `FOOTAGE_SPEED`, `BGM_VOLUME`, `BGM_DUCK_RATIO`, `EST_CHARS_PER_SEC`) ค่าที่ใส่ใน storyboard จะใช้แทน default
 
@@ -89,28 +89,7 @@ ls music/                          # มีเพลงอย่างน้อ�
 
 ### 1. ให้ Claude เจน storyboard
 
-แนบไฟล์ `storyboard.schema.json` (และแนบ `examples/storyboard.json` เป็นตัวอย่างด้วยก็ได้) แล้วใช้ prompt นี้:
-
-```
-คุณคือ Story Director ของช่อง YouTube Shorts ภาษาไทย
-หัวข้อ: <หัวข้อ>   ความยาวเป้าหมาย: 40–50 วินาที   โทน: <เช่น ตื่นเต้น/อบอุ่น>
-
-สร้าง storyboard.json ตาม schema ที่แนบ (schema_version "1.0") โดย:
-- โครงสร้าง H-C-B-R: HOOK (3–4 วิ, ประโยคแรกต้องหยุดนิ้ว) → CONFLICT → BODY 1–2 scene → RESOLUTION + CTA
-- narration_lines: ภาษาไทยพูดธรรมชาติ บรรทัดละ 1 ประโยค เว้นวรรคตรงจุดหายใจ/จุดที่อยากให้ซับตัด
-  รวมทั้งคลิปประมาณ 13 ตัวอักษร/วินาที (≈ 550–600 ตัวอักษรสำหรับ 45 วิ)
-- ตัวเลข ตัวย่อ และคำภาษาอังกฤษ ให้ใส่คำอ่านไว้ใน voice.pronunciations เช่น {"AI": "เอไอ"}
-- cuts: 1 คัตต่อเสียงพูดประมาณ 2–2.5 วินาที, duration_hint_sec 1.5–3.0
-  HOOK ที่ยาว 3–4 วิ ให้มี 2 คัต
-- pexels_query: ภาษาอังกฤษ รูปธรรม "subject + action/object (+ setting)" 3–7 คำ
-  ห้ามคำนามธรรม (success, motivation, idea) ห้าม AI/cartoon/3D/illustration
-  ฟุตเทจจะเล่น 2x จึงควรเลือกฉากที่มีการเคลื่อนไหวต่อเนื่อง (มือทำงาน, คนเดิน, เมือง, ธรรมชาติ)
-  ใส่ fallback_queries 1–2 อันที่กว้างขึ้น
-- สลับ shot_type ระหว่างคัตติดกัน (close_up ↔ wide ↔ overhead ...) เพื่อ visual rhythm
-- ใส่ subtitles.emphasis_words 3–5 คำสำคัญ (ต้องสะกดตรงกับในบท)
-- คง voice, render, bgm ตามไฟล์ตัวอย่าง (voice_id th-TH-NiwatNeural, footage_speed 2.0)
-ส่งเฉพาะ JSON ที่ valid เท่านั้น
-```
+คัดลอก prompt ชุดเดียวจาก [`storyboard-prompt.md`](storyboard-prompt.md) ไปวางในแชต Claude แล้วแก้หัวข้อ ความยาว และโทน ไม่ต้องแนบไฟล์ เพราะกฎของ schema ทั้งหมดอยู่ในข้อความแล้ว
 
 บันทึกผลเป็น `projects/<ชื่อ>/storyboard.json` เช่น
 
@@ -176,6 +155,7 @@ for s in json.load(open('projects/my_clip/timeline.json'))['scenes']:
 | เสียงพูดชิดกันเกินไป | เพิ่ม `voice.line_gap_sec` (0.03–0.08) หรือ `scene_gap_sec` (0.1–0.2) |
 | พยัญชนะท้ายคำขาด | เพิ่ม `TTS_KEEP_TAIL_SEC` ที่หัว `render_shorts.py` |
 | เพลงดัง/เบาเกิน | ปรับ `bgm.volume` และ `bgm.duck_ratio` (ratio ต่ำ = เพลงดังใต้เสียงพูดมากขึ้น) |
+| ช่วงแรกของเพลงไม่เข้ากับเนื้อหา | ตั้ง `bgm.start_sec` เป็นวินาทีที่อยากให้เพลงเริ่ม และตั้ง `bgm.file` เพื่อล็อกเพลง (ถ้าเพลงสั้นกว่าคลิป รอบที่วนซ้ำจะเริ่มจาก 0) |
 | `No audio was received` | voice นั้นล่มฝั่ง Microsoft → ทดสอบด้วย `edge-tts --voice <id> --text "ทดสอบ" --write-media test.mp3` แล้วเปลี่ยน `voice_id` |
 
 ### 6. เผยแพร่

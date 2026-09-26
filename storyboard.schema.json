@@ -107,6 +107,7 @@
           "default": true,
           "description": "Sidechain-duck the music whenever the voice speaks."
         },
+        "start_sec": { "type": "number", "minimum": 0, "default": 0, "description": "Second in the music file where playback starts. Use it to skip an intro that does not fit the clip." },
         "fade_in_sec": { "type": "number", "minimum": 0, "default": 0.5 },
         "fade_out_sec": { "type": "number", "minimum": 0, "default": 1.5 }
       }

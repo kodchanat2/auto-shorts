@@ -66,7 +66,7 @@ Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (�
 3. **Footage:** ระบบค้นหาตามลำดับนี้ คือ portrait ที่ไม่ต้องขยายภาพก่อน รองลงมาคือ portrait ที่ขยายไม่เกิน 1.5× และสุดท้ายคือ landscape 4K ที่ crop กลางได้ โดยไล่จาก `pexels_query` ไปจนถึง `fallback_queries` คลิปจะไม่ซ้ำกันในวิดีโอเดียว ถ้าคลิปสั้นกว่าคัตจะ loop ให้
 4. **ภาพ:** ทุกคัตผ่าน `speed (render.footage_speed) → scale → center-crop 1080x1920 → fps 30` และตัดด้วยจำนวนเฟรมที่แม่นยำ ถ้าตั้ง `footage_speed: 2.0` แต่ละคัตจะใช้ฟุตเทจยาวเป็น 2 เท่า
 5. **ซับไทย:** pythainlp ตัดคำ แล้วจัดกลุ่มเป็นวลีสั้นๆ ขนาดใกล้เคียงกัน (≤14 ตัวอักษรที่มองเห็น) ใช้ช่องว่างในบทเป็นจุดตัดหลัก จังหวะมาจาก word-boundary ของ TTS และถ้าจับคู่ไม่ได้จะเฉลี่ยตามความยาวข้อความ คำใน `emphasis_words` จะเป็นสีเหลือง และมี pop animation สั้นๆ
-6. **เสียง:** เสียงพากย์ผ่าน loudnorm ที่ −15 LUFS ส่วน BGM ถูก sidechain-duck อัตโนมัติขณะมีเสียงพูด พร้อม fade in/out ปรับความดังด้วย `bgm.volume` และความแรงของการ duck ด้วย `bgm.duck_ratio` (ต่ำ = เพลงดังใต้เสียงพูดมากขึ้น, สไตล์ viral ≈ `0.45` / `4`)
+6. **เสียง:** เสียงพากย์ผ่าน loudnorm ที่ −15 LUFS ส่วน BGM ถูก sidechain-duck อัตโนมัติขณะมีเสียงพูด พร้อม fade in/out ปรับความดังด้วย `bgm.volume`, ความแรงของการ duck ด้วย `bgm.duck_ratio` และเลือกวินาทีที่เริ่มเล่นเพลงด้วย `bgm.start_sec` (ข้ามช่วง intro ที่ไม่เข้ากับเนื้อหา) (ต่ำ = เพลงดังใต้เสียงพูดมากขึ้น, สไตล์ viral ≈ `0.45` / `4`)
 
 ## ตั้งค่าเสียงพากย์ (`voice` ใน storyboard)
 
@@ -85,24 +85,7 @@ Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (�
 
 ## Prompt สำหรับให้ Claude สร้าง Storyboard
 
-แนบไฟล์ `storyboard.schema.json` แล้วใช้ prompt นี้:
-
-```
-คุณคือ Story Director ของช่อง YouTube Shorts ภาษาไทย
-หัวข้อ: <หัวข้อ>   ความยาวเป้าหมาย: 40–50 วินาที   โทน: <เช่น ตื่นเต้น/อบอุ่น>
-
-สร้าง storyboard.json ตาม schema ที่แนบ (schema_version "1.0") โดย:
-- โครงสร้าง H-C-B-R: HOOK (≤4 วิ, ประโยคแรกต้องหยุดนิ้ว) → CONFLICT → BODY 1–2 scene → RESOLUTION + CTA
-- narration_lines: ภาษาไทยพูดธรรมชาติ บรรทัดละ 1 ประโยค เว้นวรรคตรงจุดหายใจ
-  รวมทั้งคลิปประมาณ 13 ตัวอักษร/วินาทีที่ rate +10% (≈ 550–600 ตัวอักษรสำหรับ 45 วิ)
-- cuts: 1 คัตต่อเสียงพูดประมาณ 2–2.5 วินาที, duration_hint_sec 1.5–3.0
-- pexels_query: ภาษาอังกฤษ รูปธรรม "subject + action/object (+ setting)" 3–7 คำ
-  ห้ามคำนามธรรม (success, motivation, idea) ห้าม AI/cartoon/3D/illustration
-  ใส่ fallback_queries 1–2 อันที่กว้างขึ้น
-- สลับ shot_type ระหว่างคัตติดกัน (close_up ↔ wide ↔ overhead ...) เพื่อ visual rhythm
-- ใส่ emphasis_words 3–5 คำสำคัญ
-ส่งเฉพาะ JSON ที่ valid เท่านั้น
-```
+ใช้ prompt ชุดเดียวใน [`docs/storyboard-prompt.md`](docs/storyboard-prompt.md) คัดลอกไปวางในแชต Claude แล้วแก้หัวข้อ ความยาว และโทน ไม่ต้องแนบไฟล์ schema เพราะกฎทั้งหมดอยู่ในข้อความแล้ว
 
 ## Troubleshooting
 
