@@ -1,0 +1,7 @@
+# Python 3.10+  |  system dependency: FFmpeg  (macOS: brew install ffmpeg)
+edge-tts>=7.0.0        # free Microsoft Edge neural TTS (Thai voices, word timings)
+requests>=2.31         # Pexels API + downloads
+pythainlp>=5.0         # Thai word segmentation for captions
+Pillow>=10.1           # caption rendering (wheels include RAQM for correct Thai shaping)
+python-dotenv>=1.0     # loads PEXELS_API_KEY from .env
+jsonschema>=4.20       # validates storyboard.json against storyboard.schema.json

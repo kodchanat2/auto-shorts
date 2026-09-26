@@ -1,0 +1,298 @@
+{
+  "schema_version": "1.0",
+  "meta": {
+    "title": "คุณไม่ได้ขี้เกียจ แค่สมองหนีอารมณ์",
+    "topic": "Procrastination is an emotion-regulation problem + the 2-minute rule",
+    "target_duration_sec": 45,
+    "language": "th-TH"
+  },
+  "voice": {
+    "voice_id": "th-TH-PremwadeeNeural",
+    "rate": "+10%",
+    "pitch": "+0Hz",
+    "line_gap_sec": 0.12,
+    "scene_gap_sec": 0.25,
+    "pronunciations": {
+      "80%": "แปดสิบเปอร์เซ็นต์"
+    }
+  },
+  "render": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "min_cut_sec": 1.5,
+    "max_cut_sec": 3.0,
+    "seed": 42
+  },
+  "subtitles": {
+    "enabled": true,
+    "font_path": null,
+    "font_size": 92,
+    "max_chars": 14,
+    "position_y": 0.68,
+    "emphasis_words": [
+      "ขี้เกียจ",
+      "ภัยคุกคาม",
+      "อารมณ์",
+      "สองนาที"
+    ]
+  },
+  "bgm": {
+    "enabled": true,
+    "folder": "music",
+    "file": null,
+    "volume": 0.16,
+    "duck": true
+  },
+  "scenes": [
+    {
+      "scene_id": "S1",
+      "role": "HOOK",
+      "emotion": "provocative",
+      "visual_intent": "Relatable frozen-at-desk moment, fast and tight",
+      "narration_lines": [
+        "คุณไม่ได้ขี้เกียจ",
+        "แต่สมองของคุณ กำลังหนีความรู้สึกบางอย่างอยู่"
+      ],
+      "cuts": [
+        {
+          "cut_id": "S1C1",
+          "duration_hint_sec": 1.8,
+          "shot_type": "close_up",
+          "pexels_query": "man staring at laptop screen tired",
+          "fallback_queries": [
+            "tired man laptop",
+            "bored office worker"
+          ],
+          "visual_intent": "Stuck face, dead eyes"
+        },
+        {
+          "cut_id": "S1C2",
+          "duration_hint_sec": 1.6,
+          "shot_type": "extreme_close_up",
+          "pexels_query": "clock second hand ticking",
+          "fallback_queries": [
+            "wall clock close up"
+          ],
+          "visual_intent": "Time slipping"
+        },
+        {
+          "cut_id": "S1C3",
+          "duration_hint_sec": 2.0,
+          "shot_type": "overhead",
+          "pexels_query": "messy desk with papers and coffee",
+          "fallback_queries": [
+            "cluttered desk"
+          ],
+          "visual_intent": "Unfinished work piling up"
+        }
+      ]
+    },
+    {
+      "scene_id": "S2",
+      "role": "CONFLICT",
+      "emotion": "tense",
+      "visual_intent": "Stress then escape into phone",
+      "narration_lines": [
+        "เคยไหม ตั้งใจว่าจะทำงานให้เสร็จ แต่สุดท้ายกลับไถมือถือทั้งคืน",
+        "ทุกครั้งที่งานยาก หรือน่าเบื่อ",
+        "สมองส่วนอารมณ์จะมองว่ามันคือภัยคุกคาม",
+        "แล้วสั่งให้เราหยิบมือถือขึ้นมาแทน"
+      ],
+      "cuts": [
+        {
+          "cut_id": "S2C1",
+          "duration_hint_sec": 2.2,
+          "shot_type": "medium",
+          "pexels_query": "stressed woman holding head at desk",
+          "fallback_queries": [
+            "stressed student studying",
+            "frustrated woman laptop"
+          ],
+          "visual_intent": "Overwhelm"
+        },
+        {
+          "cut_id": "S2C2",
+          "duration_hint_sec": 2.0,
+          "shot_type": "extreme_close_up",
+          "pexels_query": "human eye close up",
+          "fallback_queries": [
+            "eye blinking macro"
+          ],
+          "visual_intent": "Alarm/threat response"
+        },
+        {
+          "cut_id": "S2C3",
+          "duration_hint_sec": 2.2,
+          "shot_type": "close_up",
+          "pexels_query": "hand picking up smartphone from table",
+          "fallback_queries": [
+            "picking up phone"
+          ],
+          "visual_intent": "The escape"
+        },
+        {
+          "cut_id": "S2C4",
+          "duration_hint_sec": 2.0,
+          "shot_type": "pov",
+          "pexels_query": "scrolling social media on phone",
+          "fallback_queries": [
+            "woman scrolling phone in bed"
+          ],
+          "visual_intent": "Instant relief loop"
+        }
+      ]
+    },
+    {
+      "scene_id": "S3",
+      "role": "BODY",
+      "emotion": "revealing",
+      "visual_intent": "Credible, calm insight",
+      "narration_lines": [
+        "งานวิจัยพบว่า คนที่ผัดวันประกันพรุ่ง 80% รู้ตัวดีว่าควรทำอะไร",
+        "ปัญหาจึงไม่ใช่การจัดการเวลา",
+        "แต่เป็นการจัดการอารมณ์",
+        "ความเครียด และความกลัวว่าจะทำออกมาได้ไม่ดี คือสิ่งที่เรากำลังหนีจริงๆ"
+      ],
+      "cuts": [
+        {
+          "cut_id": "S3C1",
+          "duration_hint_sec": 2.2,
+          "shot_type": "close_up",
+          "pexels_query": "scientist writing notes in lab",
+          "fallback_queries": [
+            "researcher writing notebook"
+          ],
+          "visual_intent": "Authority"
+        },
+        {
+          "cut_id": "S3C2",
+          "duration_hint_sec": 2.0,
+          "shot_type": "close_up",
+          "pexels_query": "person writing to do list",
+          "fallback_queries": [
+            "writing checklist notebook"
+          ],
+          "visual_intent": "They know what to do"
+        },
+        {
+          "cut_id": "S3C3",
+          "duration_hint_sec": 2.0,
+          "shot_type": "extreme_close_up",
+          "pexels_query": "calendar pages flipping",
+          "fallback_queries": [
+            "calendar close up"
+          ],
+          "visual_intent": "Not about time"
+        },
+        {
+          "cut_id": "S3C4",
+          "duration_hint_sec": 2.4,
+          "shot_type": "medium",
+          "pexels_query": "woman closing eyes breathing deeply",
+          "fallback_queries": [
+            "calm woman meditating"
+          ],
+          "visual_intent": "It's about feelings"
+        }
+      ]
+    },
+    {
+      "scene_id": "S4",
+      "role": "BODY",
+      "emotion": "energetic",
+      "visual_intent": "Action, momentum, hands doing things",
+      "narration_lines": [
+        "วิธีที่ง่ายที่สุดคือกฎสองนาที",
+        "ไม่ต้องรอให้พร้อม ไม่ต้องรอแรงบันดาลใจ",
+        "บอกตัวเองว่า จะทำแค่สองนาทีพอ",
+        "พอเริ่มไปแล้ว สมองจะอยากทำต่อเอง"
+      ],
+      "cuts": [
+        {
+          "cut_id": "S4C1",
+          "duration_hint_sec": 2.0,
+          "shot_type": "extreme_close_up",
+          "pexels_query": "hand setting kitchen timer",
+          "fallback_queries": [
+            "stopwatch start"
+          ],
+          "visual_intent": "Two minutes starts now"
+        },
+        {
+          "cut_id": "S4C2",
+          "duration_hint_sec": 2.0,
+          "shot_type": "medium",
+          "pexels_query": "person opening laptop at desk",
+          "fallback_queries": [
+            "opening laptop"
+          ],
+          "visual_intent": "Starting"
+        },
+        {
+          "cut_id": "S4C3",
+          "duration_hint_sec": 2.0,
+          "shot_type": "close_up",
+          "pexels_query": "hands typing fast on keyboard",
+          "fallback_queries": [
+            "typing keyboard"
+          ],
+          "visual_intent": "Momentum"
+        },
+        {
+          "cut_id": "S4C4",
+          "duration_hint_sec": 2.0,
+          "shot_type": "overhead",
+          "pexels_query": "pen ticking checklist boxes",
+          "fallback_queries": [
+            "checking off to do list"
+          ],
+          "visual_intent": "Small win"
+        }
+      ]
+    },
+    {
+      "scene_id": "S5",
+      "role": "RESOLUTION",
+      "emotion": "warm, empowering",
+      "visual_intent": "Relief and a clear call to action",
+      "narration_lines": [
+        "ครั้งหน้าที่อยากเลื่อน ลองแค่สองนาทีดู",
+        "เพราะการเริ่มต้นเล็กๆ ชนะการรอความพร้อมที่สมบูรณ์แบบเสมอ",
+        "แล้วคอมเมนต์บอกเราหน่อย ว่าคุณจะเริ่มทำอะไร"
+      ],
+      "cuts": [
+        {
+          "cut_id": "S5C1",
+          "duration_hint_sec": 2.2,
+          "shot_type": "medium",
+          "pexels_query": "man smiling finishing work at desk",
+          "fallback_queries": [
+            "happy man laptop"
+          ],
+          "visual_intent": "Relief"
+        },
+        {
+          "cut_id": "S5C2",
+          "duration_hint_sec": 2.0,
+          "shot_type": "wide",
+          "pexels_query": "sunrise over city skyline",
+          "fallback_queries": [
+            "sunrise timelapse"
+          ],
+          "visual_intent": "Fresh start"
+        },
+        {
+          "cut_id": "S5C3",
+          "duration_hint_sec": 2.2,
+          "shot_type": "close_up",
+          "pexels_query": "woman typing message on phone smiling",
+          "fallback_queries": [
+            "texting on smartphone"
+          ],
+          "visual_intent": "Comment CTA"
+        }
+      ]
+    }
+  ]
+}

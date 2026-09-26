@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "storyboard.schema.json",
+  "title": "YouTube Shorts Storyboard (H-C-B-R, Scene -> Cuts)",
+  "description": "Data contract between Claude (Story Director) and render_shorts.py (deterministic worker). Durations in cuts are HINTS: the engine rescales them to match the real TTS length of each scene while enforcing min/max cut length.",
+  "type": "object",
+  "required": ["schema_version", "meta", "scenes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+
+    "meta": {
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "description": "Working title (Thai OK)." },
+        "topic": { "type": "string" },
+        "target_duration_sec": { "type": "number", "minimum": 15, "maximum": 180, "default": 45 },
+        "language": { "type": "string", "default": "th-TH" },
+        "notes": { "type": "string" }
+      }
+    },
+
+    "voice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "engine": { "enum": ["edge-tts"], "default": "edge-tts" },
+        "voice_id": { "type": "string", "default": "th-TH-PremwadeeNeural", "description": "th-TH-PremwadeeNeural (female) | th-TH-NiwatNeural (male)" },
+        "rate": { "type": "string", "pattern": "^[+-]\\d{1,3}%$", "default": "+10%" },
+        "pitch": { "type": "string", "pattern": "^[+-]\\d{1,3}Hz$", "default": "+0Hz" },
+        "volume": { "type": "string", "pattern": "^[+-]\\d{1,3}%$", "default": "+0%" },
+        "line_gap_sec": { "type": "number", "minimum": 0, "maximum": 1.5, "default": 0.12, "description": "Silence between narration lines inside a scene." },
+        "scene_gap_sec": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.25, "description": "Silence appended at the end of each scene." },
+        "pronunciations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Display text -> spoken text, applied only to the TTS input. Subtitles keep the display text. e.g. {\"AI\": \"เอไอ\"}"
+        }
+      }
+    },
+
+    "render": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "const": 1080 },
+        "height": { "const": 1920 },
+        "fps": { "enum": [24, 25, 30, 60], "default": 30 },
+        "min_cut_sec": { "type": "number", "minimum": 0.8, "default": 1.5 },
+        "max_cut_sec": { "type": "number", "maximum": 6, "default": 3.0 },
+        "crf": { "type": "integer", "minimum": 14, "maximum": 30, "default": 18 },
+        "preset": { "enum": ["ultrafast", "veryfast", "fast", "medium", "slow"], "default": "medium" },
+        "seed": { "type": "integer", "default": 42, "description": "Controls clip start offsets & BGM pick. Same seed + cache => same video." }
+      }
+    },
+
+    "subtitles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "font_path": { "type": ["string", "null"], "default": null, "description": "Thai TTF/OTF/TTC. null = auto-detect (fonts/ folder, then macOS Thai fonts)." },
+        "font_index": { "type": "integer", "minimum": 0, "default": 0, "description": "Face index for .ttc collections." },
+        "font_size": { "type": "integer", "minimum": 40, "maximum": 160, "default": 92 },
+        "max_chars": { "type": "integer", "minimum": 6, "maximum": 30, "default": 14, "description": "Max visible Thai characters per caption phrase (tone marks/upper vowels not counted)." },
+        "min_chars": { "type": "integer", "minimum": 1, "maximum": 12, "default": 5, "description": "A space only breaks a phrase if the phrase already has at least this many characters." },
+        "position_y": { "type": "number", "minimum": 0.1, "maximum": 0.9, "default": 0.68, "description": "Vertical center of captions as fraction of height. Keep < 0.75 to avoid YouTube Shorts UI." },
+        "text_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#FFFFFF" },
+        "highlight_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#FFE14D" },
+        "stroke_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#000000" },
+        "stroke_width": { "type": "integer", "minimum": 0, "maximum": 20, "default": 10 },
+        "pop_animation": { "type": "boolean", "default": true, "description": "Quick scale-up pop on each new caption." },
+        "emphasis_words": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Words rendered in highlight_color wherever they appear." }
+      }
+    },
+
+    "bgm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "folder": { "type": "string", "default": "music" },
+        "file": { "type": ["string", "null"], "default": null, "description": "Specific file inside folder. null = pick by seed." },
+        "volume": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.16 },
+        "duck": { "type": "boolean", "default": true, "description": "Sidechain-duck the music whenever the voice speaks." },
+        "fade_in_sec": { "type": "number", "minimum": 0, "default": 0.5 },
+        "fade_out_sec": { "type": "number", "minimum": 0, "default": 1.5 }
+      }
+    },
+
+    "scenes": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/scene" }
+    }
+  },
+
+  "$defs": {
+    "scene": {
+      "type": "object",
+      "required": ["scene_id", "role", "narration_lines", "cuts"],
+      "additionalProperties": false,
+      "properties": {
+        "scene_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "role": {
+          "enum": ["HOOK", "CONFLICT", "BODY", "RESOLUTION"],
+          "description": "H-C-B-R. Order must be non-decreasing; first scene HOOK, last RESOLUTION. BODY may repeat."
+        },
+        "narration_lines": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Thai voiceover. Each item = one TTS utterance (a natural sentence). Spaces inside a line mark soft pauses / caption breaks."
+        },
+        "emotion": { "type": "string", "description": "Direction note for humans, e.g. curious, tense, relieved." },
+        "visual_intent": { "type": "string", "description": "What the viewer should feel/see across this scene." },
+        "notes": { "type": "string" },
+        "cuts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/cut" }
+        }
+      }
+    },
+
+    "cut": {
+      "type": "object",
+      "required": ["cut_id", "duration_hint_sec", "shot_type", "pexels_query"],
+      "additionalProperties": false,
+      "properties": {
+        "cut_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "duration_hint_sec": { "type": "number", "minimum": 0.5, "maximum": 6, "description": "Relative weight. Rescaled to fit real scene audio, clamped to render.min/max_cut_sec." },
+        "shot_type": {
+          "enum": ["extreme_close_up", "close_up", "medium", "wide", "aerial", "overhead", "pov", "over_the_shoulder", "tracking", "slow_motion", "timelapse"]
+        },
+        "pexels_query": {
+          "type": "string",
+          "minLength": 3,
+          "pattern": "^[^\\u0E00-\\u0E7F]+$",
+          "description": "ENGLISH, concrete: subject + action/object (+ setting). e.g. 'woman scrolling phone in bed'. No abstract words."
+        },
+        "fallback_queries": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^\\u0E00-\\u0E7F]+$" },
+          "maxItems": 4,
+          "description": "Broader English alternatives, tried in order if the main query has no usable portrait clip."
+        },
+        "visual_intent": { "type": "string", "description": "Why this shot exists / what it must show." },
+        "pexels_video_id": { "type": ["integer", "null"], "default": null, "description": "Pin an exact Pexels video (after human review of timeline.json)." },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}
