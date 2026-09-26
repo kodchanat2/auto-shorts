@@ -1,29 +1,35 @@
 # YouTube Shorts Automation Engine
 
-`storyboard.json` → Thai voiceover (edge-tts) → Pexels real footage → FFmpeg → `output/final_shorts.mp4`
+`projects/<ชื่อ>/storyboard.json` → Thai voiceover (edge-tts) → Pexels real footage → FFmpeg → `projects/<ชื่อ>/final.mp4`
 
 Claude คือ Story Director ส่วน Python เป็น worker แบบ deterministic ที่ไม่มีการเรียก LLM เลย ถ้าใช้ storyboard, seed และ cache ชุดเดิม ผลลัพธ์จะออกมาเหมือนเดิมทุกครั้ง
 
 ## โครงสร้างโปรเจกต์
 
 ```
-shorts-engine/
+auto-shorts/
 ├── render_shorts.py          # worker engine
 ├── storyboard.schema.json    # data contract (validate อัตโนมัติ)
-├── storyboard.json           # ตัวอย่าง 5 scenes (H-C-B-R)
+├── examples/storyboard.json  # ตัวอย่าง 5 scenes (H-C-B-R) ใช้เป็นแม่แบบ
 ├── requirements.txt
 ├── .env.example              # → คัดลอกเป็น .env แล้วใส่ PEXELS_API_KEY
-├── fonts/Kanit-Bold.ttf      # ฟอนต์ไทยสำหรับซับ (OFL, ใช้เชิงพาณิชย์ได้)
-├── music/                    # วาง BGM ของคุณที่นี่
-├── cache/                    # (auto) TTS + Pexels cache เพื่อรันซ้ำได้เร็วและได้ผลเดิม
-└── output/                   # final_shorts.mp4, timeline.json, credits.txt
+├── fonts/Kanit-Bold.ttf      # ฟอนต์ไทยสำหรับซับ (OFL, ใช้เชิงพาณิชย์ได้) — ใช้ร่วมทุก project
+├── music/                    # วาง BGM ของคุณที่นี่ — ใช้ร่วมทุก project
+├── docs/pipeline.md          # แผนภาพ pipeline + คู่มือสร้างคลิปใหม่
+└── projects/<ชื่อ>/           # 1 คลิป = 1 โฟลเดอร์ (ไม่อยู่ใน git)
+    ├── storyboard.json
+    ├── final.mp4, timeline.json, credits.txt, voice_preview.wav
+    ├── cache/                # (auto) TTS + Pexels cache ของ project นี้ รันซ้ำได้เร็วและได้ผลเดิม
+    └── build/                # (auto) ไฟล์ชั่วคราว ถูกลบเมื่อเรนเดอร์สำเร็จ
 ```
+
+ทุกอย่างของคลิปหนึ่งอยู่ใน `projects/<ชื่อ>/` เสร็จงานแล้วลบโฟลเดอร์นั้นทิ้งได้เลย (ข้อแลก: cache ไม่แชร์ข้าม project คลิป Pexels ที่ซ้ำกันจะถูกโหลดใหม่)
 
 ## ติดตั้ง (macOS)
 
 ```bash
 brew install ffmpeg python@3.12
-cd shorts-engine
+cd auto-shorts
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # แล้วใส่ key จาก https://www.pexels.com/api/ (ฟรี)
@@ -34,21 +40,24 @@ cp .env.example .env          # แล้วใส่ key จาก https://www.
 ## Workflow ต่อคลิป
 
 ```bash
-# 1) ให้ Claude สร้าง storyboard (ใช้ prompt ด้านล่าง) แล้วบันทึกเป็น my_clip.json
+# 1) ให้ Claude สร้าง storyboard (ใช้ prompt ด้านล่าง) แล้วบันทึกเป็น projects/my_clip/storyboard.json
+mkdir -p projects/my_clip        # วาง JSON ลงไฟล์ projects/my_clip/storyboard.json
 
 # 2) ตรวจโครงสร้างและดูแผนโดยประมาณ (ไม่ใช้เน็ต)
-python render_shorts.py my_clip.json --dry-run
+python render_shorts.py my_clip --dry-run
 
-# 3) เจนเฉพาะเสียงเพื่อฟังก่อน → output/voice_preview.wav + timeline.json
-python render_shorts.py my_clip.json --tts-only
+# 3) เจนเฉพาะเสียงเพื่อฟังก่อน → projects/my_clip/voice_preview.wav + timeline.json
+python render_shorts.py my_clip --tts-only
 
-# 4) เรนเดอร์จริง
-python render_shorts.py my_clip.json -o output/my_clip.mp4
+# 4) เรนเดอร์จริง → projects/my_clip/final.mp4
+python render_shorts.py my_clip
 ```
 
-Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (เปลี่ยนจุดเริ่มคลิปและเพลง), `--refresh-footage` (ค้น Pexels ใหม่ ไม่ใช้ cache) และ `--keep-temp` (เก็บไฟล์ใน `build/` ไว้ debug)
+Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (เปลี่ยนจุดเริ่มคลิปและเพลง), `--refresh-footage` (ค้น Pexels ใหม่ ไม่ใช้ cache) `--keep-temp` (เก็บ `projects/<ชื่อ>/build/` ไว้ debug) และ `-o` (ตั้งชื่อไฟล์วิดีโอเอง เช่น `-o v2.mp4` จะได้ `projects/<ชื่อ>/v2.mp4`)
 
-**การตรวจแบบ Human-in-the-loop:** หลังเรนเดอร์ ให้เปิด `output/timeline.json` เพื่อดูว่าแต่ละคัตใช้ Pexels video id อะไร ถ้าคัตไหนไม่ถูกใจ ให้ทำอย่างใดอย่างหนึ่ง คือแก้ `pexels_query` หรือใส่ `"pexels_video_id": 1234567` เพื่อปักคลิปที่ต้องการ แล้วรันใหม่ คัตอื่นที่มาจาก cache จะได้ผลเดิม
+นอกจากชื่อ project แล้ว ยังชี้เป็น path ของโฟลเดอร์หรือไฟล์ `.json` ได้ด้วย โฟลเดอร์ที่ไฟล์อยู่จะถือเป็นโฟลเดอร์ project
+
+**การตรวจแบบ Human-in-the-loop:** หลังเรนเดอร์ ให้เปิด `projects/<ชื่อ>/timeline.json` เพื่อดูว่าแต่ละคัตใช้ Pexels video id อะไร ถ้าคัตไหนไม่ถูกใจ ให้ทำอย่างใดอย่างหนึ่ง คือแก้ `pexels_query` หรือใส่ `"pexels_video_id": 1234567` เพื่อปักคลิปที่ต้องการ แล้วรันใหม่ คัตอื่นที่มาจาก cache จะได้ผลเดิม
 
 ## ระบบทำงานอย่างไร
 

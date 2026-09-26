@@ -1,8 +1,10 @@
-cache/
-build/
-output/
 .env
 __pycache__/
 .venv/
 music/
+projects/
+# legacy layout (pre projects/); remove once migrated
+cache/
+build/
+output/
 storyboards/

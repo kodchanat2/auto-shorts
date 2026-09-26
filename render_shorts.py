@@ -8,12 +8,16 @@ render_shorts.py — Deterministic YouTube Shorts assembler (no LLM calls)
         -> Pexels portrait footage (cached, de-duplicated)
         -> FFmpeg: scale + center-crop 1080x1920, trim/loop per cut
         -> Thai word-level captions (pythainlp + Pillow) + ducked BGM
-        -> output/final_shorts.mp4  (+ timeline.json, credits.txt)
+        -> projects/<name>/final.mp4  (+ timeline.json, credits.txt)
+
+Everything a clip produces lives in projects/<name>/ (storyboard, outputs, cache/, build/),
+so deleting that folder removes the whole project.
 
 Usage:
-    python render_shorts.py storyboard.json --dry-run     # validate + plan, no network
-    python render_shorts.py storyboard.json --tts-only    # voice + captions timing only
-    python render_shorts.py storyboard.json               # full render
+    python render_shorts.py <name> --dry-run     # validate + plan, no network
+    python render_shorts.py <name> --tts-only    # voice + captions timing only
+    python render_shorts.py <name>               # full render
+    (<name> may also be a project folder or a storyboard .json path)
 """
 from __future__ import annotations
 
@@ -38,6 +42,10 @@ from pathlib import Path
 import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECTS_DIR = SCRIPT_DIR / "projects"
+STORYBOARD_FILE = "storyboard.json"
+FINAL_FILE = "final.mp4"
+PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 AUDIO_SR = 48000
 ROLE_ORDER = {"HOOK": 0, "CONFLICT": 1, "BODY": 2, "RESOLUTION": 3}
 THAI_RE = re.compile(r"[\u0E00-\u0E7F]")
@@ -926,10 +934,26 @@ def check_audio_continuity(path: Path) -> None:
 
 
 # ───────────────────────────── main pipeline ─────────────────────────────
+def resolve_project(target: str) -> tuple[Path, Path]:
+    """Map a CLI target to (project_dir, storyboard_path).
+    Accepts a project name (-> projects/<name>/storyboard.json), a project folder,
+    or a storyboard .json path (its folder becomes the project)."""
+    p = Path(target).expanduser()
+    if p.suffix.lower() == ".json":
+        return p.resolve().parent, p.resolve()
+    if p.is_dir():
+        return p.resolve(), p.resolve() / STORYBOARD_FILE
+    if not PROJECT_NAME_RE.match(target):
+        die(f"Invalid project name '{target}' (use letters, digits, '-' or '_')")
+    project = PROJECTS_DIR / target
+    return project, project / STORYBOARD_FILE
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Render a YouTube Short from storyboard.json")
-    ap.add_argument("storyboard", nargs="?", default="storyboard.json")
-    ap.add_argument("-o", "--out", default="output/final_shorts.mp4")
+    ap = argparse.ArgumentParser(description="Render a YouTube Short from projects/<name>/storyboard.json")
+    ap.add_argument("project", help="project name, project folder, or storyboard .json path")
+    ap.add_argument("-o", "--out", default=None,
+                    help=f"output video (default: <project>/{FINAL_FILE}; relative paths are inside the project)")
     ap.add_argument("--dry-run", action="store_true", help="validate + print plan, no network")
     ap.add_argument("--tts-only", action="store_true", help="generate voice + timing, skip footage")
     ap.add_argument("--no-subs", action="store_true")
@@ -946,9 +970,10 @@ def main() -> None:
     except ImportError:
         pass
 
-    sb_path = Path(args.storyboard)
+    project, sb_path = resolve_project(args.project)
     if not sb_path.exists():
-        die(f"Storyboard not found: {sb_path}")
+        die(f"Storyboard not found: {sb_path}\n"
+            f"Create it with: mkdir -p {project} && cp examples/{STORYBOARD_FILE} {sb_path}")
     log(f"📄 Loading {sb_path}")
     data = load_storyboard(sb_path)
     cfg = {k: deep_merge(DEFAULTS[k], data.get(k, {})) for k in DEFAULTS}
@@ -988,12 +1013,12 @@ def main() -> None:
 
     check_binaries()
     rng = random.Random(seed)
-    out_path = Path(args.out)
+    out_path = Path(args.out).expanduser() if args.out else Path(FINAL_FILE)
     if not out_path.is_absolute():
-        out_path = SCRIPT_DIR / out_path
+        out_path = project / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    cache = SCRIPT_DIR / "cache"
-    work = SCRIPT_DIR / "build" / sb_path.stem
+    cache = project / "cache"
+    work = project / "build"
     if work.exists() and not args.keep_temp:
         shutil.rmtree(work, ignore_errors=True)
     for d in ("audio", "segments", "captions"):

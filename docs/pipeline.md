@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart TD
-    A["Claude (Story Director)<br/>เขียน storyboard.json"] --> B{"validate กับ<br/>storyboard.schema.json"}
+    A["Claude (Story Director)<br/>เขียน projects/&lt;ชื่อ&gt;/storyboard.json"] --> B{"validate กับ<br/>storyboard.schema.json"}
     B -- ไม่ผ่าน --> A
     B -- ผ่าน --> DRY["--dry-run<br/>ประมาณความยาว + แผนคัต<br/>(ไม่ใช้เน็ต)"]
     B -- ผ่าน --> TTS
@@ -35,10 +35,10 @@ flowchart TD
     JOIN --> PREV["--tts-only จบที่นี่<br/>voice_preview.wav + timeline.json"]
     JOIN --> CAP --> CUT --> PX
     SEG --> MUX
-    MUX --> OUT["final_shorts.mp4<br/>timeline.json<br/>credits.txt"]
+    MUX --> OUT["projects/&lt;ชื่อ&gt;/<br/>final.mp4<br/>timeline.json<br/>credits.txt"]
 
-    C1[("cache/tts")] -.-> TTS
-    C2[("cache/pexels")] -.-> PX
+    C1[("project/cache/tts")] -.-> TTS
+    C2[("project/cache/pexels")] -.-> PX
     M[("music/")] -.-> MUX
     OUT --> REVIEW["ตรวจ timeline.json<br/>ไม่ถูกใจ → แก้ query / ปัก pexels_video_id<br/>แล้วรันใหม่ (คัตเดิมมาจาก cache)"]
 ```
@@ -58,15 +58,20 @@ flowchart TD
 
 ### ไฟล์ที่เกิดขึ้น
 
-| ที่อยู่ | คืออะไร | ลบได้ไหม |
+ทุกอย่างของคลิปหนึ่งอยู่ใน `projects/<ชื่อ>/` เสร็จงานแล้วลบทั้งโฟลเดอร์ได้เลย
+
+| ที่อยู่ (ใน `projects/<ชื่อ>/`) | คืออะไร | ลบได้ไหม |
 |---|---|---|
+| `storyboard.json` | บทและแผนคัต (input) | ไม่ควร |
+| `final.mp4` | วิดีโอผลลัพธ์ (เปลี่ยนชื่อได้ด้วย `-o`) | ผลลัพธ์ |
+| `timeline.json` | เวลาและ Pexels id ของทุกคัต + warnings | ผลลัพธ์ |
+| `credits.txt` | เครดิตฟุตเทจสำหรับใส่คำอธิบายคลิป | ผลลัพธ์ |
+| `voice_preview.wav` | เสียงพากย์จาก `--tts-only` | ได้ |
 | `cache/tts/` | mp3 + word timing ต่อบรรทัด (key = ข้อความ + voice + rate + pitch) | ได้ แต่จะต้องเจนเสียงใหม่ |
 | `cache/pexels/` | ผลค้นหาและไฟล์ฟุตเทจ | ได้ แต่จะต้องค้นและโหลดใหม่ และคลิปที่ได้อาจเปลี่ยน |
-| `build/<ชื่อ storyboard>/` | ไฟล์ชั่วคราวระหว่างเรนเดอร์ | ได้ |
-| `<โฟลเดอร์ของ -o>/timeline.json` | เวลาและ Pexels id ของทุกคัต + warnings | ผลลัพธ์ |
-| `<โฟลเดอร์ของ -o>/credits.txt` | เครดิตฟุตเทจสำหรับใส่คำอธิบายคลิป | ผลลัพธ์ |
+| `build/` | ไฟล์ชั่วคราวระหว่างเรนเดอร์ (ลบเองเมื่อสำเร็จ ยกเว้นใช้ `--keep-temp`) | ได้ |
 
-> `timeline.json`, `credits.txt` และ `voice_preview.wav` จะถูกเขียนลงโฟลเดอร์เดียวกับไฟล์ `-o` เสมอ ถ้าใช้ `output/` ร่วมกันหลายคลิป ไฟล์พวกนี้จะทับกัน ควรแยกโฟลเดอร์ต่อคลิป เช่น `-o output/my_clip/final.mp4`
+> `timeline.json`, `credits.txt` และ `voice_preview.wav` ถูกเขียนลงโฟลเดอร์เดียวกับวิดีโอเสมอ ถ้าใช้ `-o` ชี้ออกนอก project ไฟล์พวกนี้จะไปอยู่ที่นั่นด้วย
 
 ---
 
@@ -84,7 +89,7 @@ ls music/                          # มีเพลงอย่างน้อ�
 
 ### 1. ให้ Claude เจน storyboard
 
-แนบไฟล์ `storyboard.schema.json` (และแนบ `storyboard.json` เป็นตัวอย่างด้วยก็ได้) แล้วใช้ prompt นี้:
+แนบไฟล์ `storyboard.schema.json` (และแนบ `examples/storyboard.json` เป็นตัวอย่างด้วยก็ได้) แล้วใช้ prompt นี้:
 
 ```
 คุณคือ Story Director ของช่อง YouTube Shorts ภาษาไทย
@@ -107,12 +112,19 @@ ls music/                          # มีเพลงอย่างน้อ�
 ส่งเฉพาะ JSON ที่ valid เท่านั้น
 ```
 
-บันทึกผลเป็นไฟล์ เช่น `storyboards/my_clip.json`
+บันทึกผลเป็น `projects/<ชื่อ>/storyboard.json` เช่น
+
+```bash
+mkdir -p projects/my_clip
+# วาง JSON ลงไฟล์ projects/my_clip/storyboard.json
+```
+
+ชื่อ project ใช้ได้เฉพาะ a–z, A–Z, 0–9, `-` และ `_`
 
 ### 2. ตรวจโครงสร้างและดูแผน (ไม่ใช้เน็ต)
 
 ```bash
-python render_shorts.py storyboards/my_clip.json --dry-run
+python render_shorts.py my_clip --dry-run
 ```
 
 สิ่งที่ต้องดู:
@@ -123,8 +135,8 @@ python render_shorts.py storyboards/my_clip.json --dry-run
 ### 3. เจนเสียงอย่างเดียวเพื่อฟังก่อน
 
 ```bash
-python render_shorts.py storyboards/my_clip.json --tts-only -o output/my_clip/final.mp4
-open output/my_clip/voice_preview.wav
+python render_shorts.py my_clip --tts-only
+open projects/my_clip/voice_preview.wav
 ```
 
 - ฟังการออกเสียง ถ้าคำไหนอ่านผิด ให้เพิ่มใน `voice.pronunciations` แล้วรันใหม่ (ซับยังแสดงข้อความเดิม)
@@ -134,20 +146,20 @@ open output/my_clip/voice_preview.wav
 ### 4. เรนเดอร์จริง
 
 ```bash
-python render_shorts.py storyboards/my_clip.json -o output/my_clip/final.mp4
-open output/my_clip/final.mp4
+python render_shorts.py my_clip
+open projects/my_clip/final.mp4
 ```
 
 ### 5. ตรวจผลและแก้ (Human-in-the-loop)
 
 ```bash
 # ดู warnings
-python -c "import json;[print('-',w) for w in json.load(open('output/my_clip/timeline.json'))['warnings']]"
+python -c "import json;[print('-',w) for w in json.load(open('projects/my_clip/timeline.json'))['warnings']]"
 
 # ดูว่าแต่ละคัตใช้คลิปไหน
 python -c "
 import json
-for s in json.load(open('output/my_clip/timeline.json'))['scenes']:
+for s in json.load(open('projects/my_clip/timeline.json'))['scenes']:
     for c in s['cuts']:
         print(c['cut_id'], c['pexels_video_id'], c['query_used'], c['pexels_url'])"
 ```
@@ -168,20 +180,22 @@ for s in json.load(open('output/my_clip/timeline.json'))['scenes']:
 
 ### 6. เผยแพร่
 
-- คัดลอกเนื้อหาใน `output/my_clip/credits.txt` ไปใส่ในคำอธิบายคลิป
+- คัดลอกเนื้อหาใน `projects/my_clip/credits.txt` ไปใส่ในคำอธิบายคลิป
 - ใช้เฉพาะเพลงที่คุณมีสิทธิ์ใช้
 
 ### สรุปคำสั่ง
 
 ```bash
-python render_shorts.py <sb.json> --dry-run                      # ตรวจ + ประมาณความยาว
-python render_shorts.py <sb.json> --tts-only -o output/<n>/final.mp4   # เสียงอย่างเดียว
-python render_shorts.py <sb.json> -o output/<n>/final.mp4        # เรนเดอร์จริง
+python render_shorts.py <ชื่อ> --dry-run      # ตรวจ + ประมาณความยาว
+python render_shorts.py <ชื่อ> --tts-only     # เสียงอย่างเดียว
+python render_shorts.py <ชื่อ>                # เรนเดอร์จริง → projects/<ชื่อ>/final.mp4
+rm -rf projects/<ชื่อ>                        # เสร็จงานแล้วลบทั้ง project
 
 # flags เสริม
 --no-subs            # ไม่ใส่ซับ
 --no-bgm             # ไม่ใส่เพลง
 --seed 7             # เปลี่ยนจุดเริ่มคลิปและเพลง
 --refresh-footage    # ค้น Pexels ใหม่ ไม่ใช้ cache
---keep-temp          # เก็บ build/ ไว้ debug
+--keep-temp          # เก็บ projects/<ชื่อ>/build/ ไว้ debug
+-o v2.mp4            # ตั้งชื่อไฟล์วิดีโอเอง (อยู่ใน project)
 ```
