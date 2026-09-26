@@ -42,9 +42,7 @@
     "enabled": true,
     "folder": "music",
     "file": null,
-    "volume": 0.45,
     "duck": true,
-    "duck_ratio": 4,
     "start_sec": 0
   },
   "scenes": [
