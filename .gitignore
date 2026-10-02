@@ -10,5 +10,4 @@ output/
 storyboards/
 .pytest_cache/
 .coverage
-overlays/*
 !overlays/README.txt
