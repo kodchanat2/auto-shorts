@@ -34,7 +34,6 @@ auto-shorts/
 
 ```bash
 brew install ffmpeg python@3.12 libraqm   # libraqm: ให้สระ/วรรณยุกต์ในซับวางถูกที่
-cd auto-shorts                            # โฟลเดอร์ของโปรเจกต์ (ถ้าโหลด ZIP มาอาจชื่อ auto-shorts-main)
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
