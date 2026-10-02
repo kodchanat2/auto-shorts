@@ -1,23 +1,26 @@
 # YouTube Shorts Automation Engine
 
-`projects/<ชื่อ>/storyboard.json` → Thai voiceover (edge-tts) → Pexels real footage → FFmpeg → `projects/<ชื่อ>/final.mp4`
+`projects/<ชื่อ>/storyboard.json` → Thai voiceover (edge-tts หรือ Gemini Live) → Pexels real footage → FFmpeg → `projects/<ชื่อ>/final.mp4`
 
-Claude คือ Story Director ส่วน Python เป็น worker แบบ deterministic ที่ไม่มีการเรียก LLM เลย ถ้าใช้ storyboard, seed และ cache ชุดเดิม ผลลัพธ์จะออกมาเหมือนเดิมทุกครั้ง
+Claude คือ Story Director ส่วน Python เป็น worker ที่ไม่ได้ใช้ LLM ตัดสินใจอะไรเอง (ถ้าเลือกเสียง Gemini จะเรียก Gemini แค่เพื่อพากย์เสียงตามบท) ถ้าใช้ storyboard, seed และ cache ชุดเดิม ผลลัพธ์จะออกมาเหมือนเดิมทุกครั้ง
 
 ## โครงสร้างโปรเจกต์
 
 ```
 auto-shorts/
 ├── render_shorts.py          # worker engine
+├── tts_gemini.py             # engine เสียง Gemini Live (ใช้เมื่อ voice.engine = "gemini")
 ├── app.py + gui/             # GUI (Gradio) — python app.py
 ├── tests/                    # pytest
 ├── storyboard.schema.json    # data contract (validate อัตโนมัติ)
 ├── examples/storyboard.json  # ตัวอย่าง 5 scenes (H-C-B-R) ใช้เป็นแม่แบบ
-├── requirements.txt
-├── .env.example              # → คัดลอกเป็น .env แล้วใส่ PEXELS_API_KEY
+├── requirements.txt          # + requirements-dev.txt สำหรับ pytest
+├── .env.example              # → คัดลอกเป็น .env แล้วใส่ PEXELS_API_KEY (และ GEMINI_API_KEY ถ้าใช้เสียง Gemini)
 ├── fonts/Kanit-Bold.ttf      # ฟอนต์ไทยสำหรับซับ (OFL, ใช้เชิงพาณิชย์ได้) — ใช้ร่วมทุก project
 ├── music/                    # วาง BGM ของคุณที่นี่ — ใช้ร่วมทุก project
+├── overlays/                 # รูป UI ของแอปโซเชียล (PNG 9:16) ไว้วางทับ Preview ใน GUI
 ├── docs/pipeline.md          # แผนภาพ pipeline + คู่มือสร้างคลิปใหม่
+├── docs/storyboard-prompt.md # prompt ให้ Claude เขียน storyboard
 └── projects/<ชื่อ>/           # 1 คลิป = 1 โฟลเดอร์ (ไม่อยู่ใน git)
     ├── storyboard.json
     ├── final.mp4, timeline.json, credits.txt, voice_preview.wav
@@ -34,7 +37,7 @@ brew install ffmpeg python@3.12
 cd auto-shorts
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # แล้วใส่ key จาก https://www.pexels.com/api/ (ฟรี)
+cp .env.example .env          # ใส่ key จาก https://www.pexels.com/api/ (ฟรี) และ GEMINI_API_KEY ถ้าจะใช้เสียง Gemini
 ```
 
 จากนั้นวางไฟล์เพลงที่ไม่ติดลิขสิทธิ์ไว้ใน `music/` (แนะนำ YouTube Studio Audio Library) ถ้าไม่มีเพลง ระบบจะเตือนแล้วเรนเดอร์ต่อโดยไม่มี BGM
@@ -81,24 +84,26 @@ Flags อื่นๆ ได้แก่ `--no-subs`, `--no-bgm`, `--seed 7` (�
 
 ```bash
 pip install -r requirements-dev.txt
-pytest --cov=gui --cov-report=term-missing
+pytest --cov=gui --cov=tts_gemini --cov-report=term-missing
 ```
 
 ## ระบบทำงานอย่างไร
 
-1. **เสียงพากย์:** แต่ละบรรทัดใน `narration_lines` จะเป็น 1 utterance ของ edge-tts ระบบเก็บ word-boundary timing มาด้วย ตัดช่วงเงียบหัว/ท้ายที่ edge-tts ใส่มาทุกไฟล์ (≈0.17s + 0.8s, ปิดได้ด้วย `voice.trim_silence: false`) แล้วนำมาต่อเป็น scene พร้อมเว้นช่วงเงียบตาม `line_gap_sec`/`scene_gap_sec` จากนั้นปัดความยาว scene ให้ลงตัวกับจำนวนเฟรมพอดี ภาพกับเสียงจึงไม่ drift
+1. **เสียงพากย์:** แต่ละบรรทัดใน `narration_lines` จะเป็น 1 ไฟล์เสียง (edge-tts ได้ word-boundary timing มาด้วย ส่วน Gemini Live ไม่มี) ระบบตัดช่วงเงียบหัว/ท้ายของทุกไฟล์ (edge-tts ใส่มา ≈0.17s + 0.8s, ปิดได้ด้วย `voice.trim_silence: false`) แล้วนำมาต่อเป็น scene พร้อมเว้นช่วงเงียบตาม `line_gap_sec`/`scene_gap_sec` จากนั้นปัดความยาว scene ให้ลงตัวกับจำนวนเฟรมพอดี ภาพกับเสียงจึงไม่ drift
 2. **Sub-cuts:** `duration_hint_sec` เป็นแค่ "น้ำหนัก" ระบบจะสเกลให้ผลรวมเท่ากับเสียงจริงของ scene และบังคับให้แต่ละคัตอยู่ในช่วง 1.5–3.0 วินาที ถ้าเสียงยาวเกินกว่าจำนวนคัตจะรองรับ ระบบจะแตกคัตที่หนักที่สุดเป็น 2 คัต (คีย์เวิร์ดเดิมแต่คนละคลิป) ถ้าสั้นเกินจะรวมคัตที่เบาที่สุดเข้ากับคัตข้างเคียง
 3. **Footage:** ระบบค้นหาตามลำดับนี้ คือ portrait ที่ไม่ต้องขยายภาพก่อน รองลงมาคือ portrait ที่ขยายไม่เกิน 1.5× และสุดท้ายคือ landscape 4K ที่ crop กลางได้ โดยไล่จาก `pexels_query` ไปจนถึง `fallback_queries` คลิปจะไม่ซ้ำกันในวิดีโอเดียว ถ้าคลิปสั้นกว่าคัตจะ loop ให้
 4. **ภาพ:** ทุกคัตผ่าน `speed (render.footage_speed) → scale → center-crop 1080x1920 → fps 30` และตัดด้วยจำนวนเฟรมที่แม่นยำ ถ้าตั้ง `footage_speed: 2.0` แต่ละคัตจะใช้ฟุตเทจยาวเป็น 2 เท่า
-5. **ซับไทย:** pythainlp ตัดคำ แล้วจัดกลุ่มเป็นวลีสั้นๆ ขนาดใกล้เคียงกัน (≤14 ตัวอักษรที่มองเห็น) ใช้ช่องว่างในบทเป็นจุดตัดหลัก จังหวะมาจาก word-boundary ของ TTS และถ้าจับคู่ไม่ได้จะเฉลี่ยตามความยาวข้อความ คำใน `emphasis_words` จะเป็นสีเหลือง และมี pop animation สั้นๆ
-6. **เสียง:** เสียงพากย์ผ่าน loudnorm ที่ −15 LUFS ส่วน BGM ถูก sidechain-duck อัตโนมัติขณะมีเสียงพูด พร้อม fade in/out ปรับความดังด้วย `bgm.volume`, ความแรงของการ duck ด้วย `bgm.duck_ratio` และเลือกวินาทีที่เริ่มเล่นเพลงด้วย `bgm.start_sec` (ข้ามช่วง intro ที่ไม่เข้ากับเนื้อหา) (ต่ำ = เพลงดังใต้เสียงพูดมากขึ้น, สไตล์ viral ≈ `0.45` / `4`)
+5. **ซับไทย:** pythainlp ตัดคำ แล้วจัดกลุ่มเป็นวลีสั้นๆ ขนาดใกล้เคียงกัน (≤14 ตัวอักษรที่มองเห็น) ใช้ช่องว่างในบทเป็นจุดตัดหลัก จังหวะมาจาก word-boundary ของ edge-tts และถ้าจับคู่ไม่ได้ (หรือใช้เสียง Gemini) จะเฉลี่ยตามความยาวข้อความ คำใน `emphasis_words` จะเป็นสีเหลือง และมี pop animation สั้นๆ
+6. **เสียง:** เสียงพากย์ผ่าน loudnorm ที่ −15 LUFS ส่วน BGM ถูก sidechain-duck อัตโนมัติขณะมีเสียงพูด พร้อม fade in/out ปรับได้ 3 ค่า: `bgm.volume` (ความดังเพลง, ค่าเริ่มต้น 0.5), `bgm.duck_ratio` (ความแรงของการกดเพลงตอนมีเสียงพูด ค่าต่ำ = เพลงดังใต้เสียงพูดมากขึ้น, ค่าเริ่มต้น 1.2) และ `bgm.start_sec` (วินาทีที่เริ่มเล่นเพลง ใช้ข้ามช่วง intro ที่ไม่เข้ากับเนื้อหา) เสียงผสมเสร็จใน pass แยกก่อนรวมกับภาพ และหลังเรนเดอร์ระบบตรวจว่าเสียงไม่มีช่วงหาย
 
 ## ตั้งค่าเสียงพากย์ (`voice` ใน storyboard)
 
 | ค่า | แนะนำ | หมายเหตุ |
 |---|---|---|
+| `engine` | `edge-tts` (ค่าเริ่มต้น) หรือ `gemini` | ดูหัวข้อ "ใช้เสียง Gemini แทน edge-tts" ด้านล่าง |
 | `voice_id` | `th-TH-NiwatNeural` (ชาย), `th-TH-PremwadeeNeural` (หญิง — ณ ก.ย. 2026 ฝั่ง Microsoft ไม่ส่งเสียงกลับ) | ดูรายชื่อทั้งหมดด้วย `edge-tts --list-voices \| grep th-TH` |
-| `rate` | `+8%` ถึง `+15%` | Shorts ควรเร็วกว่าปกติเล็กน้อย ถ้าเกิน +20% จะเริ่มฟังไม่เป็นธรรมชาติ |
+| `rate` | edge-tts `+8%` ถึง `+15%`, Gemini ราว `+35%` | edge-tts ถ้าเกิน +20% จะเริ่มฟังไม่เป็นธรรมชาติ ส่วน Gemini พูดช้ากว่าจึงต้องเร่งมากกว่า |
+| `style` | เช่น `ผู้บรรยายคลิปสั้นไวรัล พูดเร็ว น้ำเสียงมั่นใจ` | เฉพาะ Gemini — สั่งน้ำเสียงของทั้งคลิป (อารมณ์ราย scene ใช้ `emotion` ของแต่ละ scene) |
 | `pitch` | `+0Hz` ถึง `+5Hz` | เสียงผู้หญิงที่ `+3Hz` จะสดใสขึ้น |
 | `line_gap_sec` | `0.03`–`0.08` | เว้นช่วงระหว่างประโยค ยิ่งน้อยยิ่งกระชับ |
 | `scene_gap_sec` | `0.1`–`0.2` | ช่วงหายใจระหว่าง scene |
@@ -128,8 +133,11 @@ pytest --cov=gui --cov-report=term-missing
 
 ## Troubleshooting
 
-- **`edge-tts failed` / 403:** ให้รัน `pip install -U edge-tts` ก่อน เพราะ Microsoft เปลี่ยน endpoint เป็นระยะ และตัวนี้ไม่ใช่ API ทางการ ถ้าใช้ไม่ได้ในอนาคต ให้แทนที่ฟังก์ชัน `_tts_one` ด้วย engine อื่นที่ส่งไฟล์ mp3 ออกมาเหมือนกัน
+- **`edge-tts failed` / 403:** ให้รัน `pip install -U edge-tts` ก่อน เพราะ Microsoft เปลี่ยน endpoint เป็นระยะ และตัวนี้ไม่ใช่ API ทางการ ถ้ายังใช้ไม่ได้ เปลี่ยนไปใช้ `"engine": "gemini"` ได้
 - **`No audio was received`:** มักเป็นที่ voice นั้นๆ ฝั่ง Microsoft ไม่ใช่โค้ด ทดสอบด้วย `edge-tts --voice <voice_id> --text "ทดสอบ" --write-media test.mp3` ถ้า voice อื่นใช้ได้ให้เปลี่ยน `voice_id` ชั่วคราว (ดู [edge-tts#473](https://github.com/rany2/edge-tts/issues/473))
+- **`GEMINI_API_KEY is not set`:** ใส่ key ใน `.env` (สร้างฟรีที่ https://aistudio.google.com/apikey)
+- **`Gemini Live quota used up`:** โควตาของ Gemini หมด บรรทัดที่สร้างแล้วถูก cache ไว้ รอโควตารีเซ็ตแล้วรันต่อ เปลี่ยนกลับไปใช้ edge-tts หรือเปิด billing ใน AI Studio
+- **`Gemini read a line differently`:** Gemini อ่านไม่ตรงบทแม้อ่านใหม่แล้ว ให้ฟังบรรทัดนั้น ถ้าผิดจริงให้แก้ประโยคให้อ่านง่ายขึ้นหรือปรับ `style` แล้วรันใหม่
 - **สระหรือวรรณยุกต์ในซับซ้อนทับกัน:** Pillow ไม่มี RAQM ให้รัน `brew install libraqm` แล้วติดตั้ง Pillow ใหม่
 - **`Pexels rate limit`:** โควตาฟรีคือ 200 requests/ชม. ระบบรอให้เองอัตโนมัติ และ cache ช่วยลดการเรียกซ้ำได้มาก
 - **คลิปดูแตก (upscaled warning):** ให้ปักคลิปใหม่ด้วย `pexels_video_id` หรือเปลี่ยนคีย์เวิร์ด

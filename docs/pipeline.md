@@ -12,12 +12,12 @@ flowchart TD
     B -- ผ่าน --> TTS
 
     subgraph S1["1/5 Voiceover"]
-        TTS["edge-tts ทีละบรรทัด<br/>mp3 + WordBoundary"] --> TRIM["ตัดช่วงเงียบหัว/ท้าย<br/>+ เลื่อน word timing"]
+        TTS["ทีละบรรทัด: edge-tts (mp3 + WordBoundary)<br/>หรือ Gemini Live (wav, session ต่ออารมณ์)"] --> TRIM["ตัดช่วงเงียบหัว/ท้าย<br/>+ เลื่อน word timing<br/>(Gemini: เร่งตาม rate)"]
         TRIM --> JOIN["ต่อเป็น scene<br/>+ line_gap / scene_gap<br/>ปัดให้ลงเฟรมพอดี"]
     end
 
     subgraph S2["2/5 Caption timing"]
-        CAP["pythainlp ตัดคำ<br/>จัดเป็นวลี ≤ max_chars<br/>จับเวลาจาก WordBoundary"]
+        CAP["pythainlp ตัดคำ<br/>จัดเป็นวลี ≤ max_chars<br/>จับเวลาจาก WordBoundary<br/>(Gemini: เฉลี่ยตามความยาว)"]
     end
 
     subgraph S3["3/5 Cut plan"]
@@ -29,7 +29,7 @@ flowchart TD
     end
 
     subgraph S5["5/5 Compose"]
-        MUX["overlay ซับ PNG<br/>loudnorm เสียงพากย์ −15 LUFS<br/>BGM + sidechain duck + fade"]
+        MUX["ผสมเสียง: loudnorm −15 LUFS<br/>+ BGM sidechain duck + fade<br/>แล้ว overlay ซับ PNG ลงภาพ"]
     end
 
     JOIN --> PREV["--tts-only จบที่นี่<br/>voice_preview.wav + timeline.json"]
@@ -40,7 +40,7 @@ flowchart TD
     C1[("project/cache/tts")] -.-> TTS
     C2[("project/cache/pexels")] -.-> PX
     M[("music/")] -.-> MUX
-    OUT --> REVIEW["ตรวจ timeline.json<br/>ไม่ถูกใจ → แก้ query / ปัก pexels_video_id<br/>แล้วรันใหม่ (คัตเดิมมาจาก cache)"]
+    OUT --> REVIEW["ตรวจ timeline.json<br/>ไม่ถูกใจ → แก้ query / ปัก pexels_video_id<br/>/ exclude_video_ids แล้วรันใหม่<br/>(คัตเดิมมาจาก cache)"]
 ```
 
 ### แต่ละขั้นทำอะไร
@@ -48,13 +48,13 @@ flowchart TD
 | ขั้น | Input | Output | จุดที่ปรับได้ |
 |---|---|---|---|
 | Validate | `storyboard.json` | storyboard ที่ผ่าน schema | `storyboard.schema.json` |
-| 1. Voiceover | `narration_lines`, `voice` | เสียงแต่ละ scene (ลงเฟรมพอดี) | `voice.rate`, `line_gap_sec`, `scene_gap_sec`, `trim_silence`, `pronunciations` |
+| 1. Voiceover | `narration_lines`, `voice`, `emotion` ของ scene | เสียงแต่ละ scene (ลงเฟรมพอดี) | `voice.engine`, `voice_id`, `rate`, `style` (Gemini), `line_gap_sec`, `scene_gap_sec`, `trim_silence`, `pronunciations`, `scenes[].emotion` (Gemini) |
 | 2. Caption timing | ข้อความ + word timing | วลีซับพร้อมเวลา | `subtitles.max_chars`, `min_chars`, `emphasis_words` |
 | 3. Cut plan | `cuts[].duration_hint_sec` + ความยาวเสียงจริง | ความยาวจริงของแต่ละคัต | `render.min_cut_sec`, `max_cut_sec` |
-| 4. Footage | `pexels_query`, `fallback_queries`, `pexels_video_id` | คลิป 1080x1920 ต่อคัต | `render.footage_speed`, `--refresh-footage`, `--seed` |
+| 4. Footage | `pexels_query`, `fallback_queries`, `pexels_video_id`, `exclude_video_ids` | คลิป 1080x1920 ต่อคัต | `render.footage_speed`, `--refresh-footage`, `--seed` |
 | 5. Compose | วิดีโอ + เสียง + ซับ + เพลง | `final.mp4` | `bgm.volume`, `bgm.duck_ratio`, `bgm.start_sec`, `bgm.file`, `--no-subs`, `--no-bgm` |
 
-ค่า default ของตัวปรับหลักอยู่เป็น constant ที่หัว `render_shorts.py` (`TTS_*`, `FOOTAGE_SPEED`, `BGM_VOLUME`, `BGM_DUCK_RATIO`, `EST_CHARS_PER_SEC`) ค่าที่ใส่ใน storyboard จะใช้แทน default
+ค่า default ของตัวปรับหลักอยู่เป็น constant ที่หัว `render_shorts.py` (`TTS_*`, `FOOTAGE_SPEED`, `BGM_VOLUME`, `BGM_DUCK_RATIO`, `BGM_START_SEC`, `EST_CHARS_PER_SEC`, `EST_CHARS_PER_SEC_GEMINI`, `AUDIO_GAP_WARN_SEC`) และของ Gemini อยู่ที่หัว `tts_gemini.py` (`GEMINI_LIVE_MODEL`, `DEFAULT_VOICE`, `MIN_SIMILARITY`) ค่าที่ใส่ใน storyboard จะใช้แทน default
 
 ### ไฟล์ที่เกิดขึ้น
 
@@ -67,7 +67,7 @@ flowchart TD
 | `timeline.json` | เวลาและ Pexels id ของทุกคัต + warnings | ผลลัพธ์ |
 | `credits.txt` | เครดิตฟุตเทจสำหรับใส่คำอธิบายคลิป | ผลลัพธ์ |
 | `voice_preview.wav` | เสียงพากย์จาก `--tts-only` | ได้ |
-| `cache/tts/` | mp3 + word timing ต่อบรรทัด (key = ข้อความ + voice + rate + pitch) | ได้ แต่จะต้องเจนเสียงใหม่ |
+| `cache/tts/` | เสียงต่อบรรทัด: edge-tts เป็น mp3 + word timing (key = ข้อความ + voice + rate + pitch), Gemini เป็น wav ความเร็วดิบ (key = ข้อความ + voice + style + emotion — เปลี่ยน `rate` จึงไม่ต้องเรียก API ใหม่) | ได้ แต่จะต้องเจนเสียงใหม่ (Gemini เสียโควตา) |
 | `cache/pexels/` | ผลค้นหาและไฟล์ฟุตเทจ | ได้ แต่จะต้องค้นและโหลดใหม่ และคลิปที่ได้อาจเปลี่ยน |
 | `build/` | ไฟล์ชั่วคราวระหว่างเรนเดอร์ (ลบเองเมื่อสำเร็จ ยกเว้นใช้ `--keep-temp`) | ได้ |
 
@@ -122,7 +122,8 @@ open projects/my_clip/voice_preview.wav
 
 - ฟังการออกเสียง ถ้าคำไหนอ่านผิด ให้เพิ่มใน `voice.pronunciations` แล้วรันใหม่ (ซับยังแสดงข้อความเดิม)
 - ดูความยาวจริงที่ `total voice: XXs`
-- ขั้นนี้ยังไม่ใช้ Pexels quota เสียงที่เจนแล้วจะถูก cache ไว้ใช้ตอนเรนเดอร์จริง
+- ขั้นนี้ยังไม่ใช้ Pexels quota เสียงที่เจนแล้วจะถูก cache ไว้ใช้ตอนเรนเดอร์จริง (ถ้าใช้ Gemini ขั้นนี้คือขั้นที่ใช้โควตา Gemini)
+- ถ้าใช้ Gemini ซับจะจับเวลาแบบเฉลี่ย และถ้ามีบรรทัดที่อ่านไม่ตรงบท จะขึ้น warning `Gemini read a line differently`
 
 ### 4. เรนเดอร์จริง
 
@@ -158,7 +159,10 @@ for s in json.load(open('projects/my_clip/timeline.json'))['scenes']:
 | พยัญชนะท้ายคำขาด | เพิ่ม `TTS_KEEP_TAIL_SEC` ที่หัว `render_shorts.py` |
 | เพลงดัง/เบาเกิน | ปรับ `bgm.volume` และ `bgm.duck_ratio` (ratio ต่ำ = เพลงดังใต้เสียงพูดมากขึ้น) |
 | ช่วงแรกของเพลงไม่เข้ากับเนื้อหา | ตั้ง `bgm.start_sec` เป็นวินาทีที่อยากให้เพลงเริ่ม และตั้ง `bgm.file` เพื่อล็อกเพลง (ถ้าเพลงสั้นกว่าคลิป รอบที่วนซ้ำจะเริ่มจาก 0) |
-| `No audio was received` | voice นั้นล่มฝั่ง Microsoft → ทดสอบด้วย `edge-tts --voice <id> --text "ทดสอบ" --write-media test.mp3` แล้วเปลี่ยน `voice_id` |
+| `No audio was received` | voice นั้นล่มฝั่ง Microsoft → ทดสอบด้วย `edge-tts --voice <id> --text "ทดสอบ" --write-media test.mp3` แล้วเปลี่ยน `voice_id` หรือใช้ `"engine": "gemini"` |
+| `Gemini Live quota used up` | โควตา Gemini หมด → บรรทัดที่ทำแล้วอยู่ใน cache รอรีเซ็ตแล้วรันต่อ หรือเปลี่ยนเป็น edge-tts |
+| `Gemini read a line differently` | ฟังบรรทัดนั้น ถ้าผิดจริงให้แก้ประโยคหรือ `style` แล้วรันใหม่ |
+| เสียง Gemini ยาวเกิน | เพิ่ม `voice.rate` (ไม่เสียโควตา) หรือใส่ "พูดเร็ว" ใน `style` (สร้างเสียงใหม่) |
 
 ### 6. เผยแพร่
 
