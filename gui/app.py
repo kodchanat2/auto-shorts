@@ -91,6 +91,20 @@ def _music_view(name, music, start):
             wave_md: W.caption(start, clip, total)}
 
 
+def _voice_view(vs):
+    choices = S.voices_for(vs.engine)
+    voice = vs.voice_id if vs.voice_id in choices else S.default_voice(vs.engine)
+    return {engine_dd: vs.engine, voice_dd: gr.Dropdown(choices=choices, value=voice),
+            style_tb: gr.Textbox(value=vs.style, visible=vs.engine == "gemini"), rate_sl: vs.rate_pct}
+
+
+def change_engine(engine, style):
+    """User switched engine: offer that engine's voices, starting from its default."""
+    view = _voice_view(S.VoiceSettings(engine, S.default_voice(engine), style or "", 10))
+    view.pop(rate_sl)
+    return view
+
+
 def change_music(name, music):
     """User picked another track: its intro may differ, so start from 0 again."""
     return _music_view(name, music, 0)
@@ -118,6 +132,7 @@ def load_project(name):
         editor: H.storyboard_text(name),
         save_msg: "" if data else "ยังไม่มี storyboard — วาง JSON จาก Claude ในช่องนี้แล้วกด **บันทึก**",
         prompt_again: H.prompt_for(name),
+        **_voice_view(S.read_voice(data or {})),
         music_dd: gr.Dropdown(choices=music_choices, value=music),
         **_music_view(name, music, s.start_sec),
         volume_sl: s.volume, duck_sl: min(max(s.duck_ratio, DUCK_MIN), DUCK_MAX), speed_sl: s.footage_speed,
@@ -151,22 +166,26 @@ def _settings(music, start, vol, duck, speed):
                             float(start or 0), float(vol), float(duck), float(speed))
 
 
-def _prepare(name, text, settings):
+def _prepare(name, text, settings, voice=None):
     """Save pending editor edits + GUI settings. Returns (storyboard_text, error)."""
     if (text or "").strip() != H.storyboard_text(name).strip():
         res = H.check_and_save(name, text or "")
         if not res.ok:
             return None, res.report
-    return H.save_settings(name, settings), None
+    sb_text = H.save_settings(name, settings)
+    return (H.save_voice(name, voice) if voice else sb_text), None
 
 
-def run_job(mode, name, text, music, start, vol, duck, speed, version):
+def run_job(mode, name, text, music, start, vol, duck, speed, version,
+            engine=None, voice_id=None, style="", rate=10):
     if not name:
         yield {status: progress_bar(0, "เลือก project ก่อน", "error")}
         return
     try:
         video_name = P.video_filename(version or "") if mode == "render" else None
-        sb_text, err = _prepare(name, text, _settings(music, start, vol, duck, speed))
+        vs = S.VoiceSettings(engine, voice_id or S.default_voice(engine), (style or "").strip(),
+                             int(rate)) if engine else None
+        sb_text, err = _prepare(name, text, _settings(music, start, vol, duck, speed), vs)
     except (ValueError, FileNotFoundError) as e:
         sb_text, err = None, str(e)
     if err:
@@ -315,6 +334,14 @@ with gr.Blocks(title="Auto Shorts") as demo:
                 with gr.Column(scale=2):
                     with gr.Tabs():
                         with gr.Tab("Configuration"):
+                            with gr.Group():
+                                with gr.Row(equal_height=True):
+                                    engine_dd = gr.Dropdown(S.ENGINES, value="edge-tts", label="เสียงพากย์ (engine)",
+                                                            scale=1, min_width=120)
+                                    voice_dd = gr.Dropdown(S.EDGE_VOICES, label="เสียง", scale=2, min_width=160)
+                                style_tb = gr.Textbox(label="สไตล์การพูด (Gemini)", lines=2, visible=False,
+                                                      placeholder="เช่น ผู้บรรยายคลิปสั้นไวรัล พูดเร็ว น้ำเสียงมั่นใจ")
+                                rate_sl = gr.Slider(-20, 80, step=5, value=10, label="ความเร็วเสียงพากย์ (%)")
                             music_dd = gr.Dropdown(label="เพลง (music/)", choices=[RANDOM_MUSIC])
                             music_audio = gr.Audio(label="ฟังเพลง", interactive=False,
                                                    waveform_options=gr.WaveformOptions(
@@ -348,7 +375,8 @@ with gr.Blocks(title="Auto Shorts") as demo:
     settings_in = [music_dd, start_sl, volume_sl, duck_sl, speed_sl]
     music_out = [music_audio, start_sl, wave_md]
     result_out = [voice, video_dd, video, warnings_md, cut_gallery, cuts_state, selected_state, cut_md]
-    project_out = [editor, save_msg, prompt_again, music_dd, *music_out, volume_sl, duck_sl, speed_sl,
+    voice_out = [engine_dd, voice_dd, style_tb, rate_sl]
+    project_out = [editor, save_msg, prompt_again, *voice_out, music_dd, *music_out, volume_sl, duck_sl, speed_sl,
                    version_in, status, log_box, *result_out]
     project_dd.change(load_project, project_dd, project_out)
     demo.load(load_project, project_dd, project_out)
@@ -358,7 +386,8 @@ with gr.Blocks(title="Auto Shorts") as demo:
     music_dd.input(change_music, [project_dd, music_dd], music_out)   # user pick only, not programmatic
     start_sl.change(move_start, [project_dd, music_dd, start_sl], [music_audio, wave_md])
     video_dd.change(pick_video, [project_dd, video_dd], video)
-    run_in = [project_dd, editor, *settings_in, version_in]
+    engine_dd.input(change_engine, [engine_dd, style_tb], [engine_dd, voice_dd, style_tb])
+    run_in = [project_dd, editor, *settings_in, version_in, *voice_out]
     run_out = [editor, status, log_box, warnings_md, left_tabs, *result_out[:3], *result_out[4:]]
     for btn, mode in ((tts_btn, "tts"), (render_btn, "render")):
         btn.click(_job_handler(mode), run_in, run_out)

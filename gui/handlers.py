@@ -119,6 +119,13 @@ def clip_length(name: str) -> float:
     return float(data.get("meta", {}).get("target_duration_sec", P.DEFAULT_DURATION))
 
 
+def save_voice(name: str, vs: S.VoiceSettings) -> str:
+    data = read_storyboard(name)
+    if data is None:
+        raise FileNotFoundError(STORYBOARD_FILE)
+    return write_storyboard(name, S.apply_voice(data, vs))
+
+
 def timeline_warnings(name: str) -> list[str]:
     tl = project_dir(name) / "timeline.json"
     if not tl.exists():

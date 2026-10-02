@@ -30,3 +30,26 @@ def test_list_music_filters_audio_files(tmp_path):
     for name in ["b.mp3", "a.wav", "README.txt", "c.m4a"]:
         (tmp_path / name).write_text("x")
     assert S.list_music(tmp_path) == ["a.wav", "b.mp3", "c.m4a"]
+
+
+def test_read_voice_defaults_and_values():
+    v = S.read_voice({})
+    assert v.engine == "edge-tts" and v.rate_pct == 10 and v.style == ""
+    sb = {"voice": {"engine": "gemini", "voice_id": "Rasalgethi", "style": "เร็ว", "rate": "+35%"}}
+    assert S.read_voice(sb) == S.VoiceSettings("gemini", "Rasalgethi", "เร็ว", 35)
+
+
+def test_apply_voice_keeps_other_voice_keys():
+    sb = {"voice": {"pronunciations": {"AI": "เอไอ"}, "line_gap_sec": 0.05}}
+    out = S.apply_voice(sb, S.VoiceSettings("gemini", "Puck", "ช้า", -5))
+    assert out["voice"] == {"pronunciations": {"AI": "เอไอ"}, "line_gap_sec": 0.05,
+                            "engine": "gemini", "voice_id": "Puck", "style": "ช้า", "rate": "-5%"}
+    assert sb == {"voice": {"pronunciations": {"AI": "เอไอ"}, "line_gap_sec": 0.05}}
+
+
+def test_voices_for_engine():
+    import tts_gemini as G
+    assert S.voices_for("edge-tts") == S.EDGE_VOICES
+    assert S.voices_for("gemini") == G.GEMINI_VOICES and G.DEFAULT_VOICE in G.GEMINI_VOICES
+    assert S.default_voice("gemini") == G.DEFAULT_VOICE
+    assert S.default_voice("edge-tts") == "th-TH-NiwatNeural"

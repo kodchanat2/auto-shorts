@@ -35,6 +35,45 @@ def apply_settings(storyboard: dict, s: RenderSettings) -> dict:
     return out
 
 
+EDGE_VOICES = ["th-TH-NiwatNeural", "th-TH-PremwadeeNeural"]
+ENGINES = ["edge-tts", "gemini"]
+
+
+@dataclass(frozen=True)
+class VoiceSettings:
+    engine: str
+    voice_id: str
+    style: str        # gemini only
+    rate_pct: int     # "+10%" <-> 10
+
+
+def voices_for(engine: str) -> list[str]:
+    if engine == "gemini":
+        import tts_gemini as G
+        return G.GEMINI_VOICES
+    return EDGE_VOICES
+
+
+def default_voice(engine: str) -> str:
+    if engine == "gemini":
+        import tts_gemini as G
+        return G.DEFAULT_VOICE
+    return EDGE_VOICES[0]
+
+
+def read_voice(storyboard: dict) -> VoiceSettings:
+    v = {**R.DEFAULTS["voice"], **storyboard.get("voice", {})}
+    return VoiceSettings(engine=v["engine"], voice_id=v["voice_id"], style=v["style"],
+                         rate_pct=int(v["rate"].rstrip("%")))
+
+
+def apply_voice(storyboard: dict, vs: VoiceSettings) -> dict:
+    out = copy.deepcopy(storyboard)
+    out["voice"] = {**out.get("voice", {}), "engine": vs.engine, "voice_id": vs.voice_id,
+                    "style": vs.style, "rate": f"{vs.rate_pct:+d}%"}
+    return out
+
+
 def list_music(music_dir: Path = MUSIC_DIR) -> list[str]:
     if not music_dir.is_dir():
         return []

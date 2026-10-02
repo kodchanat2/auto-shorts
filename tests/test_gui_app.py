@@ -91,3 +91,17 @@ def test_move_start_updates_caption_and_clamps(projects, tone_music):
     assert out[A.music_audio].playback_position == 20
     assert out[A.wave_md].startswith("เริ่ม 0:20 · ช่วงที่ใช้ 0:20–1:05")
     assert A._music_view("", tone_music, 999)[A.start_sl].value == pytest.approx(90, abs=0.5)
+
+
+def test_change_engine_offers_that_engines_voices():
+    import tts_gemini as G
+    out = A.change_engine("gemini", "เร็ว")
+    assert out[A.voice_dd].value == G.DEFAULT_VOICE and out[A.voice_dd].choices[0][0] == G.GEMINI_VOICES[0]
+    assert out[A.style_tb].visible is True and out[A.style_tb].value == "เร็ว"
+    back = A.change_engine("edge-tts", "")
+    assert back[A.voice_dd].value == "th-TH-NiwatNeural" and back[A.style_tb].visible is False
+
+
+def test_voice_view_falls_back_when_voice_not_in_engine():
+    view = A._voice_view(A.S.VoiceSettings("gemini", "th-TH-NiwatNeural", "", 35))
+    assert view[A.voice_dd].value == A.S.default_voice("gemini") and view[A.rate_sl] == 35

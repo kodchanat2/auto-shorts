@@ -49,7 +49,7 @@ python app.py                 # เปิด http://127.0.0.1:7860 ในเบ�
 - **แท็บ "Project"** แบ่งเป็น 2 ฝั่ง
   - ซ้าย **Storyboard**: แก้ JSON, ปุ่ม **บันทึก** และ **ตรวจ Storyboard** (ตรวจ schema + ประมาณความยาว + แผนคัต ไม่ใช้เน็ต)
   - ซ้าย **Output**: ชื่อไฟล์ (ว่าง = `final.mp4`, พิมพ์ `v2` ได้ `v2.mp4`), ปุ่ม TTS only / Render / ยกเลิก, progress bar, วิดีโอ, เสียงพากย์, warnings และ log — TTS/Render เสร็จแล้วจะเปิดแท็บนี้ให้เอง
-  - ขวา **Configuration**: เลือกเพลง, waveform ที่ไฮไลต์ช่วงที่จะอยู่ในคลิป, slider วินาทีเริ่มเพลง (สูงสุด = ความยาวเพลง, เปลี่ยนเพลงแล้วรีเซ็ตเป็น 0), BGM volume, duck ratio (1–2), footage speed — ค่าเหล่านี้บันทึกลง storyboard ตอนกด TTS/Render
+  - ขวา **Configuration**: เสียงพากย์ (engine edge-tts / gemini, เลือกเสียง, สไตล์การพูดสำหรับ Gemini, ความเร็ว %), เลือกเพลง, slider วินาทีเริ่มเพลง (หัวเล่นของ player ย้ายไปที่จุดเริ่ม ช่วงก่อนหน้าเป็นสีเทา, สูงสุด = ความยาวเพลง, เปลี่ยนเพลงแล้วรีเซ็ตเป็น 0), BGM volume, duck ratio (1–2), footage speed — ค่าเหล่านี้บันทึกลง storyboard ตอนกด TTS/Render
   - ขวา **คัต**: แกลเลอรีคลิปของ render ล่าสุด
 - **แกลเลอรีคัต** กดที่รูปแล้วกด 🎲 สุ่มคลิปใหม่ (ใส่ id ปัจจุบันลง `exclude_video_ids` ของคัตนั้น) แล้วกด Render อีกครั้ง คัตอื่นได้คลิปเดิมจาก cache ถ้าอยากใช้คลิปเจาะจงให้ใส่ `pexels_video_id` ในแท็บ Storyboard
 - **Overlay บน Preview**: วางรูป PNG/WebP พื้นโปร่งใส 9:16 (เช่นเทมเพลต UI ของ Shorts/TikTok/Reels) ใน `overlays/` แล้วเลือกใต้ Preview และติ๊ก "แสดง overlay" เพื่อเช็กว่าซับหรือภาพสำคัญโดน UI ของแอปบังไหม — มีผลแค่ในหน้าจอ ไม่ถูกใส่ลงวิดีโอ

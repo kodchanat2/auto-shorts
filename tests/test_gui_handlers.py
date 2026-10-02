@@ -97,3 +97,14 @@ def test_clip_length_prefers_rendered_timeline(projects):
     assert H.clip_length("clip") == 50
     (folder / "timeline.json").write_text(json.dumps({"duration_sec": 39.2}))
     assert H.clip_length("clip") == 39.2
+
+
+def test_save_voice_writes_voice_block(projects):
+    (projects / "clip").mkdir()
+    (projects / "clip" / "storyboard.json").write_text(EXAMPLE, encoding="utf-8")
+    H.save_voice("clip", __import__("gui.settings", fromlist=["x"]).VoiceSettings("gemini", "Puck", "เร็ว", 30))
+    v = H.read_storyboard("clip")["voice"]
+    assert (v["engine"], v["voice_id"], v["style"], v["rate"]) == ("gemini", "Puck", "เร็ว", "+30%")
+    assert v["pronunciations"]  # untouched
+    with pytest.raises(FileNotFoundError):
+        H.save_voice("missing", __import__("gui.settings", fromlist=["x"]).VoiceSettings("edge-tts", "x", "", 0))
