@@ -33,18 +33,22 @@ auto-shorts/
 ## ติดตั้ง (macOS)
 
 ```bash
-brew install ffmpeg python@3.12
-cd auto-shorts
-python3.12 -m venv .venv && source .venv/bin/activate
+brew install ffmpeg python@3.12 libraqm   # libraqm: ให้สระ/วรรณยุกต์ในซับวางถูกที่
+cd auto-shorts                            # โฟลเดอร์ของโปรเจกต์ (ถ้าโหลด ZIP มาอาจชื่อ auto-shorts-main)
+python3.12 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # ใส่ key จาก https://www.pexels.com/api/ (ฟรี) และ GEMINI_API_KEY ถ้าจะใช้เสียง Gemini
 ```
 
 จากนั้นวางไฟล์เพลงที่ไม่ติดลิขสิทธิ์ไว้ใน `music/` (แนะนำ YouTube Studio Audio Library) ถ้าไม่มีเพลง ระบบจะเตือนแล้วเรนเดอร์ต่อโดยไม่มี BGM
 
+> **ทุกครั้งที่เปิด terminal ใหม่** ให้ `cd` เข้าโฟลเดอร์โปรเจกต์แล้วรัน `source .venv/bin/activate` ก่อน คำสั่ง `python` ในเอกสารนี้หมายถึง Python ใน `.venv` — macOS ไม่มีคำสั่ง `python` ให้ใช้ตรงๆ (ถ้าเจอ `command not found: python` แปลว่ายังไม่ได้ activate) หรือจะเรียก `.venv/bin/python` แทน `python` เลยก็ได้โดยไม่ต้อง activate
+
 ## ใช้ผ่าน GUI (แนะนำ)
 
 ```bash
+source .venv/bin/activate     # ถ้ายังไม่ได้ activate ใน terminal นี้
 python app.py                 # เปิด http://127.0.0.1:7860 ในเบราว์เซอร์ให้อัตโนมัติ
 ```
 
