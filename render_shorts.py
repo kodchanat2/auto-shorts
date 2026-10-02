@@ -49,6 +49,7 @@ PROJECT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 AUDIO_SR = 48000
 ROLE_ORDER = {"HOOK": 0, "CONFLICT": 1, "BODY": 2, "RESOLUTION": 3}
 THAI_RE = re.compile(r"[\u0E00-\u0E7F]")
+EST_CHARS_PER_SEC_GEMINI = 8.6  # Gemini Live at +0% with a "speak fast" style (measured 8.65; ~7.8 without)
 EST_CHARS_PER_SEC = 12.0  # rough Thai TTS speed at +0% after silence trim (visible chars; measured ~12.4 on th-TH-NiwatNeural)
 
 # ── pacing / mix tunables (defaults; storyboard values override where exposed) ──
@@ -67,7 +68,7 @@ DEFAULTS = {
         "engine": "edge-tts", "voice_id": "th-TH-PremwadeeNeural",
         "rate": "+10%", "pitch": "+0Hz", "volume": "+0%",
         "line_gap_sec": 0.12, "scene_gap_sec": 0.25, "pronunciations": {},
-        "trim_silence": TTS_TRIM_SILENCE,
+        "trim_silence": TTS_TRIM_SILENCE, "style": "",
     },
     "render": {
         "width": 1080, "height": 1920, "fps": 30,
@@ -187,6 +188,7 @@ class Line:
     start_f: int = 0          # absolute frame where this line's audio starts
     dur_s: float = 0.0
     words: list = field(default_factory=list)   # edge-tts WordBoundary events
+    emotion: str = ""         # scene emotion (used by the Gemini engine)
     phrases: list = field(default_factory=list)  # display phrases
     timing_mode: str = ""
 
@@ -422,23 +424,59 @@ async def _tts_one(text: str, v: dict, mp3: Path, words_json: Path, sem: asyncio
                 await asyncio.sleep(2 * attempt)
 
 
+def _line_audio_paths(spoken: str, v: dict, cache: Path, emotion: str = "") -> tuple[Path, Path]:
+    """Cache paths for one line. edge-tts keys are unchanged so existing caches stay valid."""
+    if v["engine"] == "gemini":
+        import tts_gemini as G
+        # rate is applied at decode time (atempo), so it is not part of the key: speed tweaks cost no API calls
+        key = sha("gemini", G.GEMINI_LIVE_MODEL, spoken, G.resolve_voice(v["voice_id"]), v["style"], emotion)
+        return cache / f"{key}.wav", cache / f"{key}.words.json"
+    key = sha(spoken, v["voice_id"], v["rate"], v["pitch"], v["volume"])
+    return cache / f"{key}.mp3", cache / f"{key}.words.json"
+
+
+def _synthesize_gemini(jobs: list[tuple[str, Path, Path, str]], v: dict) -> None:
+    import tts_gemini as G
+    try:
+        client = G.make_client(os.environ.get("GEMINI_API_KEY", "").strip())
+    except RuntimeError as e:
+        die(str(e))
+    voice = G.resolve_voice(v["voice_id"])
+    log(f"  generating {len(jobs)} line(s) with Gemini {G.GEMINI_LIVE_MODEL} / {voice} (rate {v['rate']}) …")
+    try:
+        mismatches = G.synthesize_all([(text, audio, emotion) for text, audio, _, emotion in jobs], voice, v["style"],
+                                      "+0%", client)  # raw speed in cache; rate applied in decode_pcm
+    except RuntimeError as e:
+        die(str(e))
+    for _, audio, wj, _ in jobs:
+        if audio.exists():
+            wj.write_text("[]", encoding="utf-8")   # Gemini returns no word timings
+    for m in mismatches:
+        warn(m)
+
+
 def synthesize_lines(lines: list[Line], v: dict, cache: Path) -> None:
     cache.mkdir(parents=True, exist_ok=True)
     jobs, sem = [], None
     targets = []
     for ln in lines:
-        key = sha(ln.spoken, v["voice_id"], v["rate"], v["pitch"], v["volume"])
-        mp3, wj = cache / f"{key}.mp3", cache / f"{key}.words.json"
+        mp3, wj = _line_audio_paths(ln.spoken, v, cache, ln.emotion)
         targets.append((ln, mp3, wj))
         if not (mp3.exists() and wj.exists()):
-            jobs.append((ln.spoken, mp3, wj))
+            jobs.append((ln.spoken, mp3, wj, ln.emotion))
 
-    if jobs:
+    if v["engine"] == "gemini":
+        warn("Gemini TTS gives no word timings → captions use proportional timing")
+        if jobs:
+            _synthesize_gemini(jobs, v)
+        else:
+            log("  all lines cached ✓")
+    elif jobs:
         log(f"  generating {len(jobs)} line(s) with {v['voice_id']} (rate {v['rate']}) …")
 
         async def main():
             s = asyncio.Semaphore(4)
-            await asyncio.gather(*[_tts_one(t, v, m, w, s) for t, m, w in jobs])
+            await asyncio.gather(*[_tts_one(t, v, m, w, s) for t, m, w, _ in jobs])
         try:
             asyncio.run(main())
         except RuntimeError as e:
@@ -451,8 +489,9 @@ def synthesize_lines(lines: list[Line], v: dict, cache: Path) -> None:
         ln.mp3 = mp3  # type: ignore[attr-defined]
 
 
-def decode_pcm(mp3: Path, out_wav: Path) -> bytes:
-    run(["ffmpeg", "-y", "-v", "error", "-i", str(mp3), "-ac", "1", "-ar", str(AUDIO_SR),
+def decode_pcm(mp3: Path, out_wav: Path, tempo: float = 1.0) -> bytes:
+    speed = ["-filter:a", f"atempo={tempo:.4f}"] if abs(tempo - 1.0) > 1e-6 else []
+    run(["ffmpeg", "-y", "-v", "error", "-i", str(mp3), *speed, "-ac", "1", "-ar", str(AUDIO_SR),
          "-sample_fmt", "s16", str(out_wav)], "decode TTS")
     with wave.open(str(out_wav), "rb") as w:
         return w.readframes(w.getnframes())
@@ -1008,7 +1047,8 @@ def main() -> None:
         die("render.min_cut_sec must be < max_cut_sec")
 
     scenes = [ScenePlan(sc["scene_id"], sc["role"],
-                        [Line(t.strip(), apply_pronunciations(t.strip(), v["pronunciations"]))
+                        [Line(t.strip(), apply_pronunciations(t.strip(), v["pronunciations"]),
+                              emotion=sc.get("emotion", ""))
                          for t in sc["narration_lines"]], sc["cuts"]) for sc in data["scenes"]]
 
     # ── dry run: estimates only ──
@@ -1017,7 +1057,8 @@ def main() -> None:
     log(f"\n🎬 {data['meta']['title']}  |  voice {v['voice_id']} {v['rate']}")
     for sc in scenes:
         chars = sum(visible_len(l.spoken) for l in sc.lines)
-        est = chars / (EST_CHARS_PER_SEC * rate) + v["line_gap_sec"] * (len(sc.lines) - 1) + v["scene_gap_sec"]
+        cps = EST_CHARS_PER_SEC_GEMINI if v["engine"] == "gemini" else EST_CHARS_PER_SEC
+        est = chars / (cps * rate) + v["line_gap_sec"] * (len(sc.lines) - 1) + v["scene_gap_sec"]
         est_total += est
         need = max(1, round(est / ((r["min_cut_sec"] + r["max_cut_sec"]) / 2)))
         log(f"  [{sc.role:<10}] {sc.scene_id}: ~{est:4.1f}s  | {len(sc.cut_specs)} cuts (≈{need} needed)")
@@ -1045,11 +1086,12 @@ def main() -> None:
         (work / d).mkdir(parents=True, exist_ok=True)
 
     # ── 1. TTS ──
-    log("\n🎙️  1/5 Voiceover (edge-tts)")
+    log(f"\n🎙️  1/5 Voiceover ({v['engine']})")
     progress(1, "Voiceover")
     all_lines = [ln for sc in scenes for ln in sc.lines]
     synthesize_lines(all_lines, v, cache / "tts")
 
+    tempo = 1 + int(v["rate"].rstrip("%")) / 100 if v["engine"] == "gemini" else 1.0  # edge-tts rate is native
     silence = lambda sec: b"\x00\x00" * int(round(sec * AUDIO_SR))
     spf = AUDIO_SR // fps if AUDIO_SR % fps == 0 else AUDIO_SR / fps
     voice_pcm = bytearray()
@@ -1061,7 +1103,7 @@ def main() -> None:
             if i:
                 pcm += silence(v["line_gap_sec"])
             ln.start_f = frame_cursor + round(len(pcm) / 2 / spf)
-            chunk = decode_pcm(ln.mp3, work / "audio" / f"{sc.scene_id}_{i}.wav")  # type: ignore[attr-defined]
+            chunk = decode_pcm(ln.mp3, work / "audio" / f"{sc.scene_id}_{i}.wav", tempo)  # type: ignore[attr-defined]
             if v["trim_silence"]:
                 chunk, ln.words = trim_silence(chunk, ln.words)
             ln.dur_s = len(chunk) / 2 / AUDIO_SR
@@ -1120,7 +1162,7 @@ def main() -> None:
 
     timeline = {
         "title": data["meta"]["title"], "fps": fps, "duration_sec": round(T, 3), "seed": seed,
-        "voice": {k: v[k] for k in ("voice_id", "rate", "pitch", "volume")},
+        "voice": {k: v[k] for k in ("engine", "voice_id", "rate", "pitch", "volume", "style")},
         "scenes": [{
             "scene_id": sc.scene_id, "role": sc.role,
             "start_sec": round(sc.start_f / fps, 3), "duration_sec": round(sc.frames / fps, 3),

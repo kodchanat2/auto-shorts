@@ -87,3 +87,84 @@ def test_schema_accepts_exclude_video_ids():
     cut = {"cut_id": "S1C1", "duration_hint_sec": 2, "shot_type": "wide",
            "pexels_query": "city at night", "exclude_video_ids": [123, 456]}
     jsonschema.validate(cut, cut_schema)
+
+
+def _voice(**over):
+    return {**R.DEFAULTS["voice"], "engine": "gemini", "voice_id": "Puck", "style": "เร็ว", **over}
+
+
+def test_gemini_cache_key_differs_from_edge_and_by_style(tmp_path):
+    edge = {**R.DEFAULTS["voice"], "voice_id": "th-TH-NiwatNeural"}
+    a, _ = R._line_audio_paths("สวัสดี", edge, tmp_path)
+    b, _ = R._line_audio_paths("สวัสดี", _voice(), tmp_path)
+    c, _ = R._line_audio_paths("สวัสดี", _voice(style="ช้า"), tmp_path)
+    assert a.suffix == ".mp3" and b.suffix == ".wav"
+    assert len({a.name, b.name, c.name}) == 3
+
+
+def test_synthesize_lines_with_gemini_uses_client_and_caches(tmp_path, monkeypatch):
+    import tts_gemini as G
+    calls = []
+
+    def fake_synth(jobs, voice, style, rate, client, **kw):
+        for text, out, emotion in jobs:
+            calls.append((text, voice, style, rate))
+            out.write_bytes(b"RIFF" + b"\0" * 2000)
+        return ["mismatch warning"]
+    monkeypatch.setattr(G, "make_client", lambda key: object())
+    monkeypatch.setattr(G, "synthesize_all", fake_synth)
+    lines = [R.Line("หนึ่ง", "หนึ่ง"), R.Line("สอง", "สอง")]
+    R.synthesize_lines(lines, _voice(), tmp_path)
+    assert sorted(c[0] for c in calls) == ["สอง", "หนึ่ง"]
+    assert all(c[1:] == ("Puck", "เร็ว", "+0%") for c in calls)  # rate applied later at decode
+    assert all(ln.words == [] and ln.mp3.suffix == ".wav" for ln in lines)
+    assert any("proportional" in w for w in R.WARNINGS)
+    assert "mismatch warning" in R.WARNINGS
+
+    calls.clear()
+    R.synthesize_lines([R.Line("หนึ่ง", "หนึ่ง")], _voice(), tmp_path)
+    assert calls == []  # served from cache
+
+
+def test_gemini_without_key_exits(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with pytest.raises(SystemExit):
+        R.synthesize_lines([R.Line("x", "x")], _voice(), tmp_path)
+
+
+def test_gemini_cache_key_ignores_rate(tmp_path):
+    a, _ = R._line_audio_paths("สวัสดี", _voice(rate="+10%"), tmp_path)
+    b, _ = R._line_audio_paths("สวัสดี", _voice(rate="+40%"), tmp_path)
+    assert a == b
+
+
+def test_decode_pcm_applies_tempo(tmp_path):
+    import subprocess
+    src = tmp_path / "t.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=f=440:d=2", str(src)], check=True)
+    normal = R.decode_pcm(src, tmp_path / "a.wav")
+    fast = R.decode_pcm(src, tmp_path / "b.wav", tempo=2.0)
+    assert len(fast) == pytest.approx(len(normal) / 2, rel=0.02)
+
+
+def test_gemini_cache_key_includes_emotion_but_edge_ignores_it(tmp_path):
+    g1, _ = R._line_audio_paths("สวัสดี", _voice(), tmp_path, "tense")
+    g2, _ = R._line_audio_paths("สวัสดี", _voice(), tmp_path, "warm")
+    assert g1 != g2
+    edge = {**R.DEFAULTS["voice"], "voice_id": "th-TH-NiwatNeural"}
+    assert R._line_audio_paths("x", edge, tmp_path, "tense") == R._line_audio_paths("x", edge, tmp_path)
+
+
+def test_synthesize_lines_passes_scene_emotion(tmp_path, monkeypatch):
+    import tts_gemini as G
+    seen = []
+
+    def fake_synth(jobs, voice, style, rate, client, **kw):
+        for text, out, emotion in jobs:
+            seen.append((text, emotion))
+            out.write_bytes(b"RIFF" + b"\0" * 2000)
+        return []
+    monkeypatch.setattr(G, "make_client", lambda key: object())
+    monkeypatch.setattr(G, "synthesize_all", fake_synth)
+    R.synthesize_lines([R.Line("ก", "ก", emotion="tense"), R.Line("ข", "ข")], _voice(), tmp_path)
+    assert seen == [("ก", "tense"), ("ข", "")]

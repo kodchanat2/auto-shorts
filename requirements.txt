@@ -6,3 +6,4 @@ Pillow>=10.1           # caption rendering (wheels include RAQM for correct Thai
 python-dotenv>=1.0     # loads PEXELS_API_KEY from .env
 jsonschema>=4.20       # validates storyboard.json against storyboard.schema.json
 gradio>=6.0            # local GUI (python app.py)
+google-genai>=2.25     # Gemini TTS (voice.engine = "gemini")

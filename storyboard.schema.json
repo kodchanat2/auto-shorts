@@ -26,8 +26,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "engine": { "enum": ["edge-tts"], "default": "edge-tts" },
-        "voice_id": { "type": "string", "default": "th-TH-PremwadeeNeural", "description": "th-TH-PremwadeeNeural (female) | th-TH-NiwatNeural (male)" },
+        "engine": { "enum": ["edge-tts", "gemini"], "default": "edge-tts", "description": "gemini needs GEMINI_API_KEY; it has no word timings (captions use proportional timing) and ignores pitch/volume." },
+        "voice_id": { "type": "string", "default": "th-TH-PremwadeeNeural", "description": "edge-tts: th-TH-NiwatNeural (male) | th-TH-PremwadeeNeural (female). gemini: a prebuilt voice such as Kore, Puck, Charon, Aoede." },
+        "style": { "type": "string", "default": "", "description": "gemini only: delivery instructions, e.g. 'excited, fast-paced YouTube Shorts narrator'." },
         "rate": { "type": "string", "pattern": "^[+-]\\d{1,3}%$", "default": "+10%" },
         "pitch": { "type": "string", "pattern": "^[+-]\\d{1,3}Hz$", "default": "+0Hz" },
         "volume": { "type": "string", "pattern": "^[+-]\\d{1,3}%$", "default": "+0%" },
@@ -137,7 +138,7 @@
           "items": { "type": "string", "minLength": 1 },
           "description": "Thai voiceover. Each item = one TTS utterance (a natural sentence). Spaces inside a line mark soft pauses / caption breaks."
         },
-        "emotion": { "type": "string", "description": "Direction note for humans, e.g. curious, tense, relieved." },
+        "emotion": { "type": "string", "description": "Scene mood, e.g. 'ท้าทาย ชวนสงสัย' or 'tense'. The Gemini voice engine acts it out (one Live session per emotion); edge-tts ignores it." },
         "visual_intent": { "type": "string", "description": "What the viewer should feel/see across this scene." },
         "notes": { "type": "string" },
         "cuts": {
